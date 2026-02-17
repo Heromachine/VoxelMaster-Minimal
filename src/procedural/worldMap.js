@@ -205,9 +205,5 @@ function generateWorldMap(seed) {
         if (!anyConflict) break;
     }
 
-    // ---- Step 4: force spawn area to beach ----
-    grid[8 * size + 8] = BIOME_BEACH;
-    grid[8 * size + 9] = BIOME_BEACH;
-
     return grid;
 }

@@ -44,7 +44,7 @@ function Draw(timestamp) {
         DrawBackground();
         RenderCube();
         Render();
-        // RenderItems();  // Disabled - no trees
+        RenderItems();
         RenderMinimap();
         Flip();
         frames++;

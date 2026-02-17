@@ -80,15 +80,19 @@ function showSeedMenu() {
         setTimeout(function() {
             generateTerrain(seedVal);
 
-            // Place camera on the spawn terrain surface
-            var spawnIdx = (Math.floor(camera.y) << map.shift) + Math.floor(camera.x);
-            camera.height = map.altitude[spawnIdx] * map.heightScale + player.normalHeight;
+            // Initialize tile system before sampling spawn height so the
+            // correct biome map is used (not always the beach map).
+            items = [];  // clear items from any previous world
+            initializeTileSystem();
+            spawnBiomeTrees();
+
+            // Place camera on the spawn terrain surface using the tile-aware sampler
+            camera.height = getRawTerrainHeight(camera.x, camera.y) + player.normalHeight;
 
             // Hide menu and start the game
             var menuEl = document.getElementById('seed-menu');
             if (menuEl) menuEl.style.display = 'none';
 
-            initializeTileSystem();
             flattenTerrainUnderCube();
             Draw();
         }, 50);

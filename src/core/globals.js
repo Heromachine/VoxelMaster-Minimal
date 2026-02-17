@@ -10,7 +10,7 @@ var camera = {
     height: 78,
     angle: 0,
     horizon: 100,
-    distance: 1000,
+    distance: 3000,
     velocityY: 0,
     focalLength: 300
 };

@@ -142,7 +142,7 @@ function getTerrainData(x, y, z) {
         var tileCenterX = tilePos.startX + tileSystem.tileWidth / 2;
         var tileCenterY = tilePos.startY + tileSystem.tileHeight / 2;
         var distToTile = Math.hypot(tileCenterX - camera.x, tileCenterY - camera.y);
-        var maxTileDistance = 1000;  // Only render tiles within this distance (adjust for performance)
+        var maxTileDistance = 3000;  // Only render tiles within this distance (adjust for performance)
 
         if (distToTile > maxTileDistance) {
             return null;  // Tile too far away, don't render
@@ -156,167 +156,168 @@ function getTerrainData(x, y, z) {
 
     // Tile overlap blending (expensive - can be toggled off)
     if (renderOpts.tileBlending) {
-        // Check if in LEFT overlap zone with previous tile (X direction)
-    var leftKey = getTileKey(coords.tileX - 1, coords.tileY);
-    if (localX >= 0 && localX < tileSystem.overlapSize && (leftKey in tileSystem.tileMap)) {
-        // LEFT OVERLAP ZONE - blend with left neighbor tile
-        var mapIndex1 = tileSystem.tileMap[leftKey];
-        var mapIndex2 = tileSystem.tileMap[tileKey];
+        var os = tileSystem.overlapSize;
+        var inLeft   = localX >= 0 && localX < os;
+        var inRight  = localX >= overlapStartX && localX < tileSystem.tileWidth;
+        var inTop    = localY >= 0 && localY < os;
+        var inBottom = localY >= overlapStartY && localY < tileSystem.tileHeight;
 
-        var map1 = maps[mapIndex1];
-        var map2 = maps[mapIndex2];
+        // Helper: sample one tile (nearest or bilinear) at local coords
+        var cornerSampleFn = function(tx, ty, lx, ly) {
+            var k = getTileKey(tx, ty);
+            if (!(k in tileSystem.tileMap)) return null;
+            var m = maps[tileSystem.tileMap[k]];
+            if (useBilinear) {
+                var s = sampleBilinear(m, lx, ly);
+                return { height: s.height, color: s.color };
+            }
+            var mx2 = Math.floor(lx) & (m.width - 1);
+            var my2 = Math.floor(ly) & (m.height - 1);
+            var off = (my2 << m.shift) + mx2;
+            return { height: m.altitude[off] * m.heightScale, color: m.color[off] };
+        };
 
-        // Position in left tile (its right overlap region)
-        var prevLocalX = tileSystem.tileWidth - tileSystem.overlapSize + localX;
-
-        var blendFactor = clamp(localX / tileSystem.overlapSize, 0, 1);
-
-        var sample1, sample2;
-
-        if (useBilinear) {
-            // Bilinear sampling from both tiles
-            sample1 = sampleBilinear(map1, prevLocalX, localY);
-            sample2 = sampleBilinear(map2, localX, localY);
-        } else {
-            // Nearest neighbor sampling (original method)
-            var mapX1 = Math.floor(prevLocalX) & (map1.width - 1);
-            var mapY1 = Math.floor(localY) & (map1.height - 1);
-            var mapX2 = Math.floor(localX) & (map2.width - 1);
-            var mapY2 = Math.floor(localY) & (map2.height - 1);
-
-            var offset1 = (mapY1 << map1.shift) + mapX1;
-            var offset2 = (mapY2 << map2.shift) + mapX2;
-
-            sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
-            sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+        // CORNER ZONES: pixel is inside an overlap region on both axes simultaneously.
+        // Previous code fell into whichever edge branch fired first, blending only one
+        // direction.  Now we do a proper 4-sample bilinear blend across all 4 tiles.
+        if ((inLeft || inRight) && (inTop || inBottom)) {
+            var bx, by, nLX, nLY, nTX, nTY;
+            if (inLeft) {
+                nLX = tileSystem.tileWidth - os + localX;
+                bx  = clamp(localX / os, 0, 1);
+                nTX = coords.tileX - 1;
+            } else {
+                nLX = localX - overlapStartX;
+                bx  = clamp(nLX / os, 0, 1);
+                nTX = coords.tileX + 1;
+            }
+            if (inTop) {
+                nLY = tileSystem.tileHeight - os + localY;
+                by  = clamp(localY / os, 0, 1);
+                nTY = coords.tileY - 1;
+            } else {
+                nLY = localY - overlapStartY;
+                by  = clamp(nLY / os, 0, 1);
+                nTY = coords.tileY + 1;
+            }
+            // s00 = diagonal corner tile, s10 = X-neighbor, s01 = Y-neighbor, s11 = center
+            var cs00 = cornerSampleFn(nTX, nTY, nLX, nLY);
+            var cs10 = cornerSampleFn(coords.tileX, nTY, localX, nLY);
+            var cs01 = cornerSampleFn(nTX, coords.tileY, nLX, localY);
+            var cs11 = cornerSampleFn(coords.tileX, coords.tileY, localX, localY);
+            // Fall back gracefully if a tile is missing
+            if (!cs00) cs00 = cs10 || cs01 || cs11;
+            if (!cs10) cs10 = cs00 || cs11 || cs01;
+            if (!cs01) cs01 = cs00 || cs11 || cs10;
+            if (!cs11) cs11 = cs01 || cs10 || cs00;
+            if (!cs00) return null;
+            var cTopH = lerp(cs00.height, cs10.height, bx);
+            var cBotH = lerp(cs01.height, cs11.height, bx);
+            var cTopC = blendColors(cs00.color, cs10.color, bx);
+            var cBotC = blendColors(cs01.color, cs11.color, bx);
+            return { height: lerp(cTopH, cBotH, by), color: blendColors(cTopC, cBotC, by) };
         }
 
-        var blendedHeight = lerp(sample1.height, sample2.height, blendFactor);
-        var blendedColor = blendColors(sample1.color, sample2.color, blendFactor);
-
-        return { height: blendedHeight, color: blendedColor };
-    }
-
-    // Check if in RIGHT overlap zone with next tile (X direction)
-    var rightKey = getTileKey(coords.tileX + 1, coords.tileY);
-    if (localX >= overlapStartX && localX < tileSystem.tileWidth && (rightKey in tileSystem.tileMap)) {
-        // RIGHT OVERLAP ZONE - blend with right neighbor tile
-        var mapIndex1 = tileSystem.tileMap[tileKey];
-        var mapIndex2 = tileSystem.tileMap[rightKey];
-
-        var map1 = maps[mapIndex1];
-        var map2 = maps[mapIndex2];
-
-        var localX2 = localX - overlapStartX;
-
-        var blendFactor = clamp(localX2 / tileSystem.overlapSize, 0, 1);
-
-        var sample1, sample2;
-
-        if (useBilinear) {
-            // Bilinear sampling from both tiles
-            sample1 = sampleBilinear(map1, localX, localY);
-            sample2 = sampleBilinear(map2, localX2, localY);
-        } else {
-            // Nearest neighbor sampling (original method)
-            var mapX1 = Math.floor(localX) & (map1.width - 1);
-            var mapY1 = Math.floor(localY) & (map1.height - 1);
-            var mapX2 = Math.floor(localX2) & (map2.width - 1);
-            var mapY2 = Math.floor(localY) & (map2.height - 1);
-
-            var offset1 = (mapY1 << map1.shift) + mapX1;
-            var offset2 = (mapY2 << map2.shift) + mapX2;
-
-            sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
-            sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+        // EDGE ZONES (non-corner): blend in one direction only
+        var leftKey = getTileKey(coords.tileX - 1, coords.tileY);
+        if (inLeft && (leftKey in tileSystem.tileMap)) {
+            var mapIndex1 = tileSystem.tileMap[leftKey];
+            var mapIndex2 = tileSystem.tileMap[tileKey];
+            var map1 = maps[mapIndex1];
+            var map2 = maps[mapIndex2];
+            var prevLocalX = tileSystem.tileWidth - os + localX;
+            var blendFactor = clamp(localX / os, 0, 1);
+            var sample1, sample2;
+            if (useBilinear) {
+                sample1 = sampleBilinear(map1, prevLocalX, localY);
+                sample2 = sampleBilinear(map2, localX, localY);
+            } else {
+                var mapX1 = Math.floor(prevLocalX) & (map1.width - 1);
+                var mapY1 = Math.floor(localY) & (map1.height - 1);
+                var mapX2 = Math.floor(localX) & (map2.width - 1);
+                var mapY2 = Math.floor(localY) & (map2.height - 1);
+                var offset1 = (mapY1 << map1.shift) + mapX1;
+                var offset2 = (mapY2 << map2.shift) + mapX2;
+                sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
+                sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+            }
+            return { height: lerp(sample1.height, sample2.height, blendFactor), color: blendColors(sample1.color, sample2.color, blendFactor) };
         }
 
-        var blendedHeight = lerp(sample1.height, sample2.height, blendFactor);
-        var blendedColor = blendColors(sample1.color, sample2.color, blendFactor);
-
-        return { height: blendedHeight, color: blendedColor };
-    }
-
-    // Check if in TOP overlap zone with previous tile (Y direction)
-    var topKey = getTileKey(coords.tileX, coords.tileY - 1);
-    if (localY >= 0 && localY < tileSystem.overlapSize && (topKey in tileSystem.tileMap)) {
-        // TOP OVERLAP ZONE - blend with top neighbor tile
-        var mapIndex1 = tileSystem.tileMap[topKey];
-        var mapIndex2 = tileSystem.tileMap[tileKey];
-
-        var map1 = maps[mapIndex1];
-        var map2 = maps[mapIndex2];
-
-        // Position in top tile (its bottom overlap region)
-        var prevLocalY = tileSystem.tileHeight - tileSystem.overlapSize + localY;
-
-        var blendFactor = clamp(localY / tileSystem.overlapSize, 0, 1);
-
-        var sample1, sample2;
-
-        if (useBilinear) {
-            // Bilinear sampling from both tiles
-            sample1 = sampleBilinear(map1, localX, prevLocalY);
-            sample2 = sampleBilinear(map2, localX, localY);
-        } else {
-            // Nearest neighbor sampling (original method)
-            var mapX1 = Math.floor(localX) & (map1.width - 1);
-            var mapY1 = Math.floor(prevLocalY) & (map1.height - 1);
-            var mapX2 = Math.floor(localX) & (map2.width - 1);
-            var mapY2 = Math.floor(localY) & (map2.height - 1);
-
-            var offset1 = (mapY1 << map1.shift) + mapX1;
-            var offset2 = (mapY2 << map2.shift) + mapX2;
-
-            sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
-            sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+        var rightKey = getTileKey(coords.tileX + 1, coords.tileY);
+        if (inRight && (rightKey in tileSystem.tileMap)) {
+            var mapIndex1 = tileSystem.tileMap[tileKey];
+            var mapIndex2 = tileSystem.tileMap[rightKey];
+            var map1 = maps[mapIndex1];
+            var map2 = maps[mapIndex2];
+            var localX2 = localX - overlapStartX;
+            var blendFactor = clamp(localX2 / os, 0, 1);
+            var sample1, sample2;
+            if (useBilinear) {
+                sample1 = sampleBilinear(map1, localX, localY);
+                sample2 = sampleBilinear(map2, localX2, localY);
+            } else {
+                var mapX1 = Math.floor(localX) & (map1.width - 1);
+                var mapY1 = Math.floor(localY) & (map1.height - 1);
+                var mapX2 = Math.floor(localX2) & (map2.width - 1);
+                var mapY2 = Math.floor(localY) & (map2.height - 1);
+                var offset1 = (mapY1 << map1.shift) + mapX1;
+                var offset2 = (mapY2 << map2.shift) + mapX2;
+                sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
+                sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+            }
+            return { height: lerp(sample1.height, sample2.height, blendFactor), color: blendColors(sample1.color, sample2.color, blendFactor) };
         }
 
-        var blendedHeight = lerp(sample1.height, sample2.height, blendFactor);
-        var blendedColor = blendColors(sample1.color, sample2.color, blendFactor);
-
-        return { height: blendedHeight, color: blendedColor };
-    }
-
-    // Check if in BOTTOM overlap zone with next tile (Y direction)
-    var bottomKey = getTileKey(coords.tileX, coords.tileY + 1);
-    if (localY >= overlapStartY && localY < tileSystem.tileHeight && (bottomKey in tileSystem.tileMap)) {
-        // BOTTOM OVERLAP ZONE - blend with bottom neighbor tile
-        var mapIndex1 = tileSystem.tileMap[tileKey];
-        var mapIndex2 = tileSystem.tileMap[bottomKey];
-
-        var map1 = maps[mapIndex1];
-        var map2 = maps[mapIndex2];
-
-        var localY2 = localY - overlapStartY;
-
-        var blendFactor = clamp(localY2 / tileSystem.overlapSize, 0, 1);
-
-        var sample1, sample2;
-
-        if (useBilinear) {
-            // Bilinear sampling from both tiles
-            sample1 = sampleBilinear(map1, localX, localY);
-            sample2 = sampleBilinear(map2, localX, localY2);
-        } else {
-            // Nearest neighbor sampling (original method)
-            var mapX1 = Math.floor(localX) & (map1.width - 1);
-            var mapY1 = Math.floor(localY) & (map1.height - 1);
-            var mapX2 = Math.floor(localX) & (map2.width - 1);
-            var mapY2 = Math.floor(localY2) & (map2.height - 1);
-
-            var offset1 = (mapY1 << map1.shift) + mapX1;
-            var offset2 = (mapY2 << map2.shift) + mapX2;
-
-            sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
-            sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+        var topKey = getTileKey(coords.tileX, coords.tileY - 1);
+        if (inTop && (topKey in tileSystem.tileMap)) {
+            var mapIndex1 = tileSystem.tileMap[topKey];
+            var mapIndex2 = tileSystem.tileMap[tileKey];
+            var map1 = maps[mapIndex1];
+            var map2 = maps[mapIndex2];
+            var prevLocalY = tileSystem.tileHeight - os + localY;
+            var blendFactor = clamp(localY / os, 0, 1);
+            var sample1, sample2;
+            if (useBilinear) {
+                sample1 = sampleBilinear(map1, localX, prevLocalY);
+                sample2 = sampleBilinear(map2, localX, localY);
+            } else {
+                var mapX1 = Math.floor(localX) & (map1.width - 1);
+                var mapY1 = Math.floor(prevLocalY) & (map1.height - 1);
+                var mapX2 = Math.floor(localX) & (map2.width - 1);
+                var mapY2 = Math.floor(localY) & (map2.height - 1);
+                var offset1 = (mapY1 << map1.shift) + mapX1;
+                var offset2 = (mapY2 << map2.shift) + mapX2;
+                sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
+                sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+            }
+            return { height: lerp(sample1.height, sample2.height, blendFactor), color: blendColors(sample1.color, sample2.color, blendFactor) };
         }
 
-        var blendedHeight = lerp(sample1.height, sample2.height, blendFactor);
-        var blendedColor = blendColors(sample1.color, sample2.color, blendFactor);
-
-        return { height: blendedHeight, color: blendedColor };
-    }
+        var bottomKey = getTileKey(coords.tileX, coords.tileY + 1);
+        if (inBottom && (bottomKey in tileSystem.tileMap)) {
+            var mapIndex1 = tileSystem.tileMap[tileKey];
+            var mapIndex2 = tileSystem.tileMap[bottomKey];
+            var map1 = maps[mapIndex1];
+            var map2 = maps[mapIndex2];
+            var localY2 = localY - overlapStartY;
+            var blendFactor = clamp(localY2 / os, 0, 1);
+            var sample1, sample2;
+            if (useBilinear) {
+                sample1 = sampleBilinear(map1, localX, localY);
+                sample2 = sampleBilinear(map2, localX, localY2);
+            } else {
+                var mapX1 = Math.floor(localX) & (map1.width - 1);
+                var mapY1 = Math.floor(localY) & (map1.height - 1);
+                var mapX2 = Math.floor(localX) & (map2.width - 1);
+                var mapY2 = Math.floor(localY2) & (map2.height - 1);
+                var offset1 = (mapY1 << map1.shift) + mapX1;
+                var offset2 = (mapY2 << map2.shift) + mapX2;
+                sample1 = { height: map1.altitude[offset1] * map1.heightScale, color: map1.color[offset1] };
+                sample2 = { height: map2.altitude[offset2] * map2.heightScale, color: map2.color[offset2] };
+            }
+            return { height: lerp(sample1.height, sample2.height, blendFactor), color: blendColors(sample1.color, sample2.color, blendFactor) };
+        }
     }  // End of tileBlending check
 
     // Regular tile (no overlap)
@@ -1002,51 +1003,81 @@ function Render_Subdivided(){
                 var overlapStartX = tileSize - overlapSize;
                 var overlapStartY = tileSize - overlapSize;
 
-                // Check if in LEFT overlap zone
-                if(localX >= 0 && localX < overlapSize) {
-                    // LEFT OVERLAP - blend with left neighbor
+                var sdInLeft   = localX >= 0 && localX < overlapSize;
+                var sdInRight  = localX >= overlapStartX && localX < tileSize;
+                var sdInTop    = localY >= 0 && localY < overlapSize;
+                var sdInBottom = localY >= overlapStartY && localY < tileSize;
+
+                // CORNER ZONES: blend across all 4 tiles bilinearly
+                if((sdInLeft || sdInRight) && (sdInTop || sdInBottom)) {
+                    var sbx, sby, snLX, snLY, snTX, snTY;
+                    if(sdInLeft) {
+                        snLX = tileSize - overlapSize + localX;
+                        sbx  = smoothstep(localX / overlapSize);
+                        snTX = tileX - 1;
+                    } else {
+                        snLX = localX - overlapStartX;
+                        sbx  = smoothstep(snLX / overlapSize);
+                        snTX = tileX + 1;
+                    }
+                    if(sdInTop) {
+                        snLY = tileSize - overlapSize + localY;
+                        sby  = smoothstep(localY / overlapSize);
+                        snTY = tileY - 1;
+                    } else {
+                        snLY = localY - overlapStartY;
+                        sby  = smoothstep(snLY / overlapSize);
+                        snTY = tileY + 1;
+                    }
+                    var sc00 = sampleTileData(snTX, snTY, snLX, snLY, useBilinear);
+                    var sc10 = sampleTileData(tileX, snTY, localX, snLY, useBilinear);
+                    var sc01 = sampleTileData(snTX, tileY, snLX, localY, useBilinear);
+                    var sc11 = sampleTileData(tileX, tileY, localX, localY, useBilinear);
+                    if(!sc00) sc00 = sc10 || sc01 || sc11;
+                    if(!sc10) sc10 = sc00 || sc11 || sc01;
+                    if(!sc01) sc01 = sc00 || sc11 || sc10;
+                    if(!sc11) sc11 = sc01 || sc10 || sc00;
+                    if(sc00) {
+                        finalAltitude = lerp(lerp(sc00.altitude, sc10.altitude, sbx), lerp(sc01.altitude, sc11.altitude, sbx), sby);
+                        finalColor    = blendColors(blendColors(sc00.color, sc10.color, sbx), blendColors(sc01.color, sc11.color, sbx), sby);
+                    } else {
+                        var sc = sampleTileData(tileX, tileY, localX, localY, useBilinear);
+                        finalAltitude = sc.altitude; finalColor = sc.color;
+                    }
+                }
+                // EDGE LEFT
+                else if(sdInLeft) {
                     var prevLocalX = tileSize - overlapSize + localX;
                     var blendFactor = smoothstep(localX / overlapSize);
-
                     var sample1 = sampleTileData(tileX - 1, tileY, prevLocalX, localY, useBilinear);
                     var sample2 = sampleTileData(tileX, tileY, localX, localY, useBilinear);
-
                     finalAltitude = lerp(sample1.altitude, sample2.altitude, blendFactor);
                     finalColor = blendColors(sample1.color, sample2.color, blendFactor);
                 }
-                // Check if in RIGHT overlap zone
-                else if(localX >= overlapStartX && localX < tileSize) {
-                    // RIGHT OVERLAP - blend with right neighbor
+                // EDGE RIGHT
+                else if(sdInRight) {
                     var localX2 = localX - overlapStartX;
                     var blendFactor = smoothstep(localX2 / overlapSize);
-
                     var sample1 = sampleTileData(tileX, tileY, localX, localY, useBilinear);
                     var sample2 = sampleTileData(tileX + 1, tileY, localX2, localY, useBilinear);
-
                     finalAltitude = lerp(sample1.altitude, sample2.altitude, blendFactor);
                     finalColor = blendColors(sample1.color, sample2.color, blendFactor);
                 }
-                // Check if in TOP overlap zone
-                else if(localY >= 0 && localY < overlapSize) {
-                    // TOP OVERLAP - blend with top neighbor
+                // EDGE TOP
+                else if(sdInTop) {
                     var prevLocalY = tileSize - overlapSize + localY;
                     var blendFactor = smoothstep(localY / overlapSize);
-
                     var sample1 = sampleTileData(tileX, tileY - 1, localX, prevLocalY, useBilinear);
                     var sample2 = sampleTileData(tileX, tileY, localX, localY, useBilinear);
-
                     finalAltitude = lerp(sample1.altitude, sample2.altitude, blendFactor);
                     finalColor = blendColors(sample1.color, sample2.color, blendFactor);
                 }
-                // Check if in BOTTOM overlap zone
-                else if(localY >= overlapStartY && localY < tileSize) {
-                    // BOTTOM OVERLAP - blend with bottom neighbor
+                // EDGE BOTTOM
+                else if(sdInBottom) {
                     var localY2 = localY - overlapStartY;
                     var blendFactor = smoothstep(localY2 / overlapSize);
-
                     var sample1 = sampleTileData(tileX, tileY, localX, localY, useBilinear);
                     var sample2 = sampleTileData(tileX, tileY + 1, localX, localY2, useBilinear);
-
                     finalAltitude = lerp(sample1.altitude, sample2.altitude, blendFactor);
                     finalColor = blendColors(sample1.color, sample2.color, blendFactor);
                 }
