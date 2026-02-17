@@ -105,43 +105,79 @@ function OnLoadedImages(result) {
     Draw();
 }
 
-// Initialize the tile system with random map assignments (10x10 grid + mountain border)
+// Initialize the tile system.
+// In procedural/biome mode: uses the world map from constraint satisfaction.
+// Fallback: original random assignment (used if LoadMap is called directly).
 function initializeTileSystem() {
+    if (proceduralMode && window.worldMapData) {
+        initializeBiomeTileSystem();
+        return;
+    }
+
+    // ---- Original random assignment (fallback) ----
     var gridSize = 10;
-    var halfGrid = Math.floor(gridSize / 2);  // 5
+    var halfGrid = Math.floor(gridSize / 2);
     var tileCount = 0;
 
-    // Create a 12x12 grid with mountain border around 10x10 regular terrain
-    // Border extends from -6 to 5 in both X and Y
     for (var tileY = -halfGrid - 1; tileY <= halfGrid; tileY++) {
         for (var tileX = -halfGrid - 1; tileX <= halfGrid; tileX++) {
             var tileKey = tileX + ',' + tileY;
-
-            // Check if this is a border tile (outer edge)
             var isBorder = (tileX === -halfGrid - 1) || (tileX === halfGrid) ||
                           (tileY === -halfGrid - 1) || (tileY === halfGrid);
 
             if (isBorder) {
-                // Border tiles use map 2 (tall mountains with heightScale 25.0)
                 tileSystem.tileMap[tileKey] = 2;
-            }
-            // Spawn tile (0,0) uses map 0
-            else if (tileX === 0 && tileY === 0) {
+            } else if (tileX === 0 && tileY === 0) {
                 tileSystem.tileMap[tileKey] = 0;
-            }
-            // Tile (1,0) uses map 1
-            else if (tileX === 1 && tileY === 0) {
+            } else if (tileX === 1 && tileY === 0) {
                 tileSystem.tileMap[tileKey] = 1;
-            }
-            // All other inner tiles use random maps (0 or 1 - regular terrain)
-            else {
-                tileSystem.tileMap[tileKey] = Math.floor(Math.random() * 2);  // Random 0 or 1
+            } else {
+                tileSystem.tileMap[tileKey] = Math.floor(Math.random() * 2);
             }
             tileCount++;
         }
     }
+    console.log("Tile system initialized (random) with", tileCount, "tiles");
+}
 
-    console.log("Tile system initialized with", tileCount, "tiles (" + gridSize + "x" + gridSize + " + mountain border)");
+// Biome-aware tile system initialization.
+// Maps each tile coordinate to a biome map index using the world map grid.
+//
+// World map → map index:
+//   BEACH    (1) → 0  (map              — spawn tile, flat beach)
+//   PLAINS   (2) → 1  (map2             — gentle grassland)
+//   HILLS    (3) → 2  (map3             — rolling hills)
+//   MOUNTAIN (4) → 3  (biomeMapMountain — dramatic peaks)
+//
+// Border tiles (outer ring) always use index 3 (mountain wall).
+function initializeBiomeTileSystem() {
+    var gridSize = 10;
+    var halfGrid = Math.floor(gridSize / 2);
+    var tileCount = 0;
+
+    for (var tileY = -halfGrid - 1; tileY <= halfGrid; tileY++) {
+        for (var tileX = -halfGrid - 1; tileX <= halfGrid; tileX++) {
+            var tileKey  = tileX + ',' + tileY;
+            var isBorder = (tileX === -halfGrid - 1) || (tileX === halfGrid) ||
+                           (tileY === -halfGrid - 1) || (tileY === halfGrid);
+
+            if (isBorder) {
+                // Mountain wall around the playable area
+                tileSystem.tileMap[tileKey] = 3;
+            } else {
+                // Look up this tile's position in the 16x16 world map.
+                // Tile (0,0) → cell (8,8); tile (-5,-5) → cell (3,3); etc.
+                var wmX = Math.max(0, Math.min(WORLD_MAP_SIZE - 1, tileX + 8));
+                var wmY = Math.max(0, Math.min(WORLD_MAP_SIZE - 1, tileY + 8));
+                var biome = window.worldMapData[wmY * WORLD_MAP_SIZE + wmX];
+
+                // biome is 1–4; subtract 1 for zero-based map index
+                tileSystem.tileMap[tileKey] = Math.max(0, biome - 1);
+            }
+            tileCount++;
+        }
+    }
+    console.log("Biome tile system initialized with", tileCount, "tiles");
 }
 
 // Flatten terrain within the cube's footprint to prevent terrain poking through

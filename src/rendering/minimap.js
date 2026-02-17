@@ -24,6 +24,139 @@ function InitMinimap() {
     } catch (e) {
         console.error("Minimap init error:", e);
     }
+    InitWorldMinimap();
+}
+
+// -----------------------------------------------------------------------
+// World Map Minimap — shows the 16x16 biome grid + player position
+// -----------------------------------------------------------------------
+
+var worldMinimap = {
+    canvas: null,
+    context: null,
+    cellSize: 10   // pixels per biome cell (160px canvas / 16 cells)
+};
+
+// Biome fill colors for the world map display
+var BIOME_COLORS = [
+    'rgb(20,20,30)',           // 0: empty/undecided — dark
+    'rgb(212,176,106)',        // 1: BEACH  — sandy tan
+    'rgb(78,126,46)',          // 2: PLAINS — meadow green
+    'rgb(58,88,36)',           // 3: HILLS  — dark forest green
+    'rgb(112,108,118)'         // 4: MOUNTAIN — cool grey
+];
+var BIOME_BORDER_COLOR = 'rgb(70,68,80)';  // outer mountain wall (darker grey)
+
+function InitWorldMinimap() {
+    try {
+        var canvas = document.getElementById('worldmap-canvas');
+        if (canvas && canvas.getContext) {
+            worldMinimap.canvas  = canvas;
+            worldMinimap.context = canvas.getContext('2d');
+            worldMinimap.cellSize = canvas.width / WORLD_MAP_SIZE;  // 160 / 16 = 10
+        }
+    } catch (e) {
+        console.error("World minimap init error:", e);
+    }
+}
+
+function RenderWorldMinimap() {
+    try {
+        if (!worldMinimap.canvas || !worldMinimap.context) return;
+
+        // Hide/show with main minimap toggle
+        worldMinimap.canvas.style.display = renderOpts.minimapVisible ? 'block' : 'none';
+        if (!renderOpts.minimapVisible) return;
+
+        // Only show when world map data exists (biome/procedural mode)
+        if (!proceduralMode || !window.worldMapData) {
+            worldMinimap.canvas.style.display = 'none';
+            return;
+        }
+
+        var ctx  = worldMinimap.context;
+        var cs   = worldMinimap.cellSize;   // pixels per cell
+        var size = WORLD_MAP_SIZE;
+        var tileAdvanceX = tileSystem.tileWidth  - tileSystem.overlapSize;  // 896
+        var tileAdvanceY = tileSystem.tileHeight - tileSystem.overlapSize;  // 896
+
+        // ---- Redraw biome grid every frame (256 fillRects — trivially cheap) ----
+        ctx.clearRect(0, 0, worldMinimap.canvas.width, worldMinimap.canvas.height);
+
+        var halfGrid  = 5;   // inner tile half-extent
+        var borderMin = -halfGrid - 1;
+        var borderMax =  halfGrid;
+
+        for (var cellY = 0; cellY < size; cellY++) {
+            for (var cellX = 0; cellX < size; cellX++) {
+                var biome = window.worldMapData[cellY * size + cellX];
+
+                // Map cell → tile coordinates (tile 0,0 is at cell 8,8)
+                var tileX = cellX - 8;
+                var tileY = cellY - 8;
+                var isBorder = (tileX === borderMin) || (tileX === borderMax) ||
+                               (tileY === borderMin) || (tileY === borderMax);
+
+                if (isBorder) {
+                    ctx.fillStyle = BIOME_BORDER_COLOR;
+                } else {
+                    ctx.fillStyle = BIOME_COLORS[biome] || BIOME_COLORS[0];
+                }
+                ctx.fillRect(cellX * cs, cellY * cs, cs, cs);
+            }
+        }
+
+        // Faint cell grid lines
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 0.5;
+        for (var i = 0; i <= size; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * cs, 0);
+            ctx.lineTo(i * cs, worldMinimap.canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, i * cs);
+            ctx.lineTo(worldMinimap.canvas.width, i * cs);
+            ctx.stroke();
+        }
+
+        // ---- Player dot (drawn on top of freshly redrawn grid) ----
+        // Convert world coordinates to world-map fraction
+        var playerTileX = camera.x / tileAdvanceX;
+        var playerTileY = camera.y / tileAdvanceY;
+
+        // Add offset: tile (0,0) maps to cell (8,8)
+        var wmFracX = (playerTileX + 8) / size;
+        var wmFracY = (playerTileY + 8) / size;
+
+        var dotX = wmFracX * worldMinimap.canvas.width;
+        var dotY = wmFracY * worldMinimap.canvas.height;
+
+        // Player direction arrow
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(dotX, dotY);
+        ctx.lineTo(
+            dotX - Math.sin(camera.angle) * cs * 1.2,
+            dotY - Math.cos(camera.angle) * cs * 1.2
+        );
+        ctx.stroke();
+
+        // Player dot
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outer border
+        ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(1, 1, worldMinimap.canvas.width - 2, worldMinimap.canvas.height - 2);
+
+    } catch (e) {
+        console.error("World minimap render error:", e);
+    }
 }
 
 function RenderMinimap() {
@@ -297,4 +430,6 @@ function RenderMinimap() {
     } catch (e) {
         console.error("Minimap render error:", e);
     }
+
+    RenderWorldMinimap();
 }

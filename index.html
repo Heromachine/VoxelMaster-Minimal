@@ -77,6 +77,19 @@
             image-rendering: auto;
         }
 
+        #worldmap-canvas {
+            position: absolute;
+            top: 262px;
+            right: 20px;
+            width: 200px;
+            height: 200px;
+            border: 2px solid rgba(0, 255, 136, 0.4);
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 10;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
         #optimization-legend {
             position: absolute;
             bottom: 20px;
@@ -241,6 +254,7 @@
     <div id="fly-indicator">FLY MODE [F to toggle]</div>
     <div id="fps-counter">FPS: 0</div>
     <canvas id="minimap" width="400" height="400"></canvas>
+    <canvas id="worldmap-canvas" width="160" height="160"></canvas>
     <div id="optimization-legend">
         <div><strong>Rendering Optimizations:</strong></div>
         <div>[1] Tile Culling: ON</div>
@@ -278,6 +292,8 @@
 <!-- Procedural Terrain -->
 <script src="src/procedural/noiseGen.js"></script>
 <script src="src/procedural/terrainGen.js"></script>
+<script src="src/procedural/worldMap.js"></script>
+<script src="src/procedural/biomeGen.js"></script>
 
 <!-- Map -->
 <script src="src/map/mapLoader.js"></script>

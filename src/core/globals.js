@@ -86,6 +86,17 @@ var map4 = {
     heightScale: 10.0  // Medium-height mountains and valleys (~850m max)
 };
 
+// Biome mountain map — used by biome generation system as maps[3].
+// Replaces map4 in biome mode (map4 is 4096x4096 and unused in biome mode).
+var biomeMapMountain = {
+    width: 1024,
+    height: 1024,
+    shift: 10,
+    altitude: new Uint8Array(1024 * 1024),
+    color: new Uint32Array(1024 * 1024),
+    heightScale: 1.0
+};
+
 // Array of all map data for easy access
 var maps = [map, map2, map3, map4];
 
@@ -173,7 +184,7 @@ var renderOpts = {
     depthInterp: true,      // 3 key - Depth interpolation
     tileBlending: true,     // 4 key - Tile overlap blending
     minimapVisible: true,   // M key - Minimap visibility
-    renderMode: 'subdivided'  // 6 key - Cycle render modes: 'subdivided', 'tiled', 'cached', 'direct'
+    renderMode: 'tiled'  // 6 key - Cycle render modes: 'subdivided', 'tiled', 'cached', 'direct'
 };
 
 // Hidden Y buffer for terrain rendering
