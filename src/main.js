@@ -67,11 +67,7 @@ function Draw(timestamp) {
 
 // Initialize game
 function Init() {
-    for (var i = 0; i < map.width * map.height; i++) {
-        map.color[i] = 0xFF007050;
-        map.altitude[i] = 0;
-    }
-    LoadMap("C1W;D1", "C14;D14", "C22W;D22", "T1;H1");
+    showSeedMenu();
     OnResizeWindow();
     InitMinimap();
     loadCubeTexture();

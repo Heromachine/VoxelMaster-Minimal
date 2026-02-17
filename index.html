@@ -94,9 +94,145 @@
         #optimization-legend div {
             margin: 3px 0;
         }
+
+        #clear-cache-btn {
+            margin-top: 8px;
+            width: 100%;
+            padding: 5px;
+            background: rgba(160, 40, 40, 0.85);
+            color: white;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid rgba(255,255,255,0.3);
+            cursor: pointer;
+        }
+        #clear-cache-btn:hover { background: rgba(200, 60, 60, 0.95); }
+
+        /* ---- Seed Menu Overlay ---- */
+        #seed-menu {
+            position: fixed;
+            inset: 0;
+            background: #07070f;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            font-family: monospace;
+        }
+
+        #seed-card {
+            text-align: center;
+            padding: 52px 64px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            max-width: 480px;
+            width: 90%;
+        }
+
+        #seed-title {
+            font-size: 40px;
+            font-weight: bold;
+            color: #00ff88;
+            letter-spacing: 8px;
+            text-shadow: 0 0 24px rgba(0, 255, 136, 0.45);
+            margin-bottom: 6px;
+        }
+
+        #seed-subtitle {
+            font-size: 11px;
+            color: rgba(0, 255, 136, 0.38);
+            letter-spacing: 6px;
+            margin-bottom: 52px;
+        }
+
+        #seed-form label {
+            display: block;
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 11px;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+
+        #seed-input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        #seed-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(0, 255, 136, 0.28);
+            color: #ffffff;
+            font-family: monospace;
+            font-size: 16px;
+            padding: 10px 14px;
+            outline: none;
+        }
+
+        #seed-input:focus {
+            border-color: rgba(0, 255, 136, 0.65);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        #random-seed-btn {
+            background: rgba(0, 255, 136, 0.08);
+            border: 1px solid rgba(0, 255, 136, 0.28);
+            color: #00ff88;
+            font-family: monospace;
+            font-size: 13px;
+            letter-spacing: 1px;
+            padding: 0 14px;
+            cursor: pointer;
+        }
+
+        #random-seed-btn:hover { background: rgba(0, 255, 136, 0.18); }
+
+        #generate-btn {
+            width: 100%;
+            padding: 14px;
+            background: rgba(0, 255, 136, 0.12);
+            border: 1px solid rgba(0, 255, 136, 0.45);
+            color: #00ff88;
+            font-family: monospace;
+            font-size: 15px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        #generate-btn:hover:not(:disabled) { background: rgba(0, 255, 136, 0.26); }
+        #generate-btn:disabled { opacity: 0.45; cursor: default; }
+
+        #gen-progress {
+            margin-top: 18px;
+            color: rgba(0, 255, 136, 0.55);
+            font-size: 11px;
+            letter-spacing: 3px;
+            min-height: 18px;
+        }
     </style>
 </head>
 <body>
+
+<!-- Seed Menu -->
+<div id="seed-menu">
+    <div id="seed-card">
+        <div id="seed-title">VOXELMASTER</div>
+        <div id="seed-subtitle">TERRAIN ENGINE</div>
+        <div id="seed-form">
+            <label for="seed-input">WORLD SEED</label>
+            <div id="seed-input-row">
+                <input type="text" id="seed-input" placeholder="Enter seed or leave for random" maxlength="32" />
+                <button id="random-seed-btn">RNG</button>
+            </div>
+            <button id="generate-btn">GENERATE WORLD</button>
+            <div id="gen-progress"></div>
+        </div>
+    </div>
+</div>
 
 <!-- Game Container -->
 <div id="game-container">
@@ -113,6 +249,7 @@
         <div>[4] Tile Blending: ON</div>
         <div>[5] Mode: Tiled (Slow)</div>
         <div>[M] Minimap: ON</div>
+        <button id="clear-cache-btn" onclick="localStorage.removeItem('voxelspace_display_config'); this.textContent = 'Cleared!'; setTimeout(() => this.textContent = 'Clear Cache', 1500);">Clear Cache</button>
     </div>
 </div>
 
@@ -137,6 +274,10 @@
 <!-- Input -->
 <script src="src/input/keyboard.js"></script>
 <script src="src/input/mouse.js"></script>
+
+<!-- Procedural Terrain -->
+<script src="src/procedural/noiseGen.js"></script>
+<script src="src/procedural/terrainGen.js"></script>
 
 <!-- Map -->
 <script src="src/map/mapLoader.js"></script>
