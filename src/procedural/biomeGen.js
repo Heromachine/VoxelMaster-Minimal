@@ -276,6 +276,8 @@ function ridgeEdgeFade(x, y, w, h, hasN, hasS, hasE, hasW) {
 // the ridge extends all the way to those edges so neighboring tiles continue it.
 function genDirectionalMountainTile(mapObj, seed, ridgeKey) {
     var detailFn = createPerlinNoise((seed ^ 0xF00DCAFE) >>> 0);
+    var warpFn   = createPerlinNoise((seed ^ 0xA1B2C3D4) >>> 0);  // domain warp
+    var elevFn   = createPerlinNoise((seed ^ 0x9E8D7C6B) >>> 0);  // along-ridge elevation
     var w = mapObj.width, h = mapObj.height;
     mapObj.heightScale = BIOME_HEIGHT_SCALE;
 
@@ -286,70 +288,79 @@ function genDirectionalMountainTile(mapObj, seed, ridgeKey) {
     var connCount = (hasN?1:0) + (hasS?1:0) + (hasE?1:0) + (hasW?1:0);
 
     var RIDGE_HW   = 0.28;  // half-width of ridge in normalised [0,1] coords
-    var BASE_ALT   = 82;    // altitude far from ridge (matches hillside connection)
-    var PEAK_ALT   = 248;   // altitude at ridge crest
-    var NOISE_AMP  = 18;    // ±amplitude of detail noise
+    var BASE_ALT   = 82;    // altitude far from ridge
+    var PEAK_MAX   = 248;   // maximum ridge crest altitude (snow cap)
+    var PEAK_MIN   = 148;   // minimum ridge crest altitude (mountain pass)
+    var NOISE_AMP  = 22;    // ±detail noise amplitude
+    var WARP_AMP   = 0.14;  // domain warp amplitude (fraction of tile width)
+    var WARP_FREQ  = 3.2;   // warp spatial frequency
 
     for (var py = 0; py < h; py++) {
         var ly = py / (h - 1);   // 0 = north edge, 1 = south edge
         for (var px = 0; px < w; px++) {
             var lx = px / (w - 1);   // 0 = west edge, 1 = east edge
 
-            // ---- Compute distance to the ridge path within this tile ----
+            // ---- Domain warp: perturb sample coords before computing ridge dist ----
+            // Uses two independent noise passes with offset seeds to get dx, dy.
+            // This bends the ridge organically rather than leaving it geometric.
+            var wx  = fbm(warpFn, lx * WARP_FREQ,       ly * WARP_FREQ,       3, 2.0, 0.5) * WARP_AMP;
+            var wy  = fbm(warpFn, lx * WARP_FREQ + 4.7, ly * WARP_FREQ + 1.9, 3, 2.0, 0.5) * WARP_AMP;
+            var wlx = lx + wx;
+            var wly = ly + wy;
+
+            // ---- Compute distance to the ridge path (using warped coords) ----
             var ridgeDist;
 
             if      (hasN && hasS && !hasE && !hasW) {
-                // Straight vertical ridge — crest along x = 0.5
-                ridgeDist = Math.abs(lx - 0.5);
+                ridgeDist = Math.abs(wlx - 0.5);
 
             } else if (hasE && hasW && !hasN && !hasS) {
-                // Straight horizontal ridge — crest along y = 0.5
-                ridgeDist = Math.abs(ly - 0.5);
+                ridgeDist = Math.abs(wly - 0.5);
 
             } else if (hasN && hasE && !hasS && !hasW) {
-                // NE corner — quarter-circle arc, center at top-right (1, 0)
-                ridgeDist = Math.abs(Math.sqrt((lx-1)*(lx-1) + ly*ly) - 0.5);
+                ridgeDist = Math.abs(Math.sqrt((wlx-1)*(wlx-1) + wly*wly) - 0.5);
 
             } else if (hasN && hasW && !hasS && !hasE) {
-                // NW corner — quarter-circle arc, center at top-left (0, 0)
-                ridgeDist = Math.abs(Math.sqrt(lx*lx + ly*ly) - 0.5);
+                ridgeDist = Math.abs(Math.sqrt(wlx*wlx + wly*wly) - 0.5);
 
             } else if (hasS && hasE && !hasN && !hasW) {
-                // SE corner — quarter-circle arc, center at bottom-right (1, 1)
-                ridgeDist = Math.abs(Math.sqrt((lx-1)*(lx-1) + (ly-1)*(ly-1)) - 0.5);
+                ridgeDist = Math.abs(Math.sqrt((wlx-1)*(wlx-1) + (wly-1)*(wly-1)) - 0.5);
 
             } else if (hasS && hasW && !hasN && !hasE) {
-                // SW corner — quarter-circle arc, center at bottom-left (0, 1)
-                ridgeDist = Math.abs(Math.sqrt(lx*lx + (ly-1)*(ly-1)) - 0.5);
+                ridgeDist = Math.abs(Math.sqrt(wlx*wlx + (wly-1)*(wly-1)) - 0.5);
 
             } else {
-                // T-junction, cross, end-cap, isolated — distance to nearest spoke
-                // (centre → each connected edge midpoint)
                 var minD = 1e9;
-                if (hasN) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.5, 0.0));
-                if (hasS) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.5, 1.0));
-                if (hasE) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 1.0, 0.5));
-                if (hasW) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.0, 0.5));
-                if (connCount === 0) {  // isolated peak: distance to center
-                    minD = Math.sqrt((lx-0.5)*(lx-0.5) + (ly-0.5)*(ly-0.5));
+                if (hasN) minD = Math.min(minD, distToSeg(wlx, wly, 0.5, 0.5, 0.5, 0.0));
+                if (hasS) minD = Math.min(minD, distToSeg(wlx, wly, 0.5, 0.5, 0.5, 1.0));
+                if (hasE) minD = Math.min(minD, distToSeg(wlx, wly, 0.5, 0.5, 1.0, 0.5));
+                if (hasW) minD = Math.min(minD, distToSeg(wlx, wly, 0.5, 0.5, 0.0, 0.5));
+                if (connCount === 0) {
+                    minD = Math.sqrt((wlx-0.5)*(wlx-0.5) + (wly-0.5)*(wly-0.5));
                 }
                 ridgeDist = minD;
             }
 
             // ---- Ridge height profile: quadratic falloff from crest ----
             var profile = Math.max(0, 1.0 - ridgeDist / RIDGE_HW);
-            profile = profile * profile;   // sharpen
+            profile = profile * profile;
+
+            // ---- Along-ridge elevation variation (peaks and saddles) ----
+            // Low-frequency noise that moves the effective peak altitude up and down.
+            // At profile=1 (crest) the altitude can range from PEAK_MIN to PEAK_MAX.
+            // At profile=0 (far from ridge) it converges to BASE_ALT regardless.
+            var elevRaw = fbm(elevFn, lx * 1.4, ly * 1.4, 4, 2.0, 0.5);
+            var elevT   = Math.max(0, Math.min(1, (elevRaw + 0.60) / 1.20));
+            var dynamicPeak = PEAK_MIN + elevT * (PEAK_MAX - PEAK_MIN);
 
             // ---- Detail noise ----
-            var nx = (px / w) * 4.0;
-            var ny = (py / h) * 4.0;
+            var nx = (px / w) * 5.0;
+            var ny = (py / h) * 5.0;
             var noise = fbm(detailFn, nx, ny, 5, 2.0, 0.5) * NOISE_AMP;
 
-            var baseAlt = BASE_ALT + (PEAK_ALT - BASE_ALT) * profile + noise;
+            var baseAlt = BASE_ALT + (dynamicPeak - BASE_ALT) * profile + noise;
 
             // ---- Directional edge fade ----
-            // Only blend to BIOME_TRANSITION_ALT at disconnected edges so the
-            // ridge flows seamlessly into adjacent mountain tiles.
             var fade    = ridgeEdgeFade(px, py, w, h, hasN, hasS, hasE, hasW);
             var edgeAlt = 85;
             var altitude = Math.round(baseAlt * fade + edgeAlt * (1 - fade));
