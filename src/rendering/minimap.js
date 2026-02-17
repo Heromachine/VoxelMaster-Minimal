@@ -120,6 +120,59 @@ function RenderWorldMinimap() {
             ctx.stroke();
         }
 
+        // ---- Mountain ridge lines (WFC pipe-style, drawn over cell fills) ----
+        // Each mountain cell checks its 4 cardinal neighbors to determine which
+        // "pipe" segments to draw.  Straight segments use lines; two-way corners
+        // use smooth arcs (rounded, not 90°).  T-junctions and crosses draw
+        // lines from the cell center to each connected edge.  Border cells are
+        // skipped — they are a solid wall, not individual ridge tiles.
+        ctx.lineCap  = 'round';
+        ctx.lineJoin = 'round';
+
+        for (var ry = 0; ry < size; ry++) {
+            for (var rx = 0; rx < size; rx++) {
+                if (window.worldMapData[ry * size + rx] !== BIOME_MOUNTAIN) continue;
+
+                // Skip border ring cells (they are solid wall, not ridge tiles)
+                var rtX = rx - 8, rtY = ry - 8;
+                if (rtX <= borderMin || rtX >= borderMax ||
+                    rtY <= borderMin || rtY >= borderMax) continue;
+
+                var N = ry > 0      && window.worldMapData[(ry - 1) * size + rx] === BIOME_MOUNTAIN;
+                var S = ry < size-1 && window.worldMapData[(ry + 1) * size + rx] === BIOME_MOUNTAIN;
+                var E = rx < size-1 && window.worldMapData[ry * size + (rx + 1)] === BIOME_MOUNTAIN;
+                var W = rx > 0      && window.worldMapData[ry * size + (rx - 1)] === BIOME_MOUNTAIN;
+
+                var px  = rx * cs,       py  = ry * cs;        // cell top-left
+                var pcx = px + cs * 0.5, pcy = py + cs * 0.5;  // cell center
+                var r   = cs * 0.5;                             // arc radius
+
+                ctx.strokeStyle = 'rgba(210,205,225,0.92)';
+                ctx.lineWidth   = cs * 0.38;
+                ctx.beginPath();
+
+                var conn = (N ? 1 : 0) + (S ? 1 : 0) + (E ? 1 : 0) + (W ? 1 : 0);
+
+                if      (N && S && !E && !W)  { ctx.moveTo(pcx, py);      ctx.lineTo(pcx, py + cs); }
+                else if (E && W && !N && !S)  { ctx.moveTo(px, pcy);      ctx.lineTo(px + cs, pcy); }
+                // Rounded corners — arc center is at the cell corner "inside" the bend
+                else if (N && E && !S && !W)  { ctx.arc(px + cs, py,      r, Math.PI,       Math.PI * 0.5, true);  }
+                else if (N && W && !S && !E)  { ctx.arc(px,      py,      r, 0,              Math.PI * 0.5, false); }
+                else if (S && E && !N && !W)  { ctx.arc(px + cs, py + cs, r, Math.PI,       Math.PI * 1.5, false); }
+                else if (S && W && !N && !E)  { ctx.arc(px,      py + cs, r, 0,              Math.PI * 1.5, true);  }
+                else {
+                    // T-junction, cross, end-cap, or isolated: spoke from center
+                    if (N) { ctx.moveTo(pcx, pcy); ctx.lineTo(pcx, py); }
+                    if (S) { ctx.moveTo(pcx, pcy); ctx.lineTo(pcx, py + cs); }
+                    if (E) { ctx.moveTo(pcx, pcy); ctx.lineTo(px + cs, pcy); }
+                    if (W) { ctx.moveTo(pcx, pcy); ctx.lineTo(px, pcy); }
+                    if (conn === 0) { ctx.arc(pcx, pcy, cs * 0.18, 0, Math.PI * 2); }
+                }
+
+                ctx.stroke();
+            }
+        }
+
         // ---- Player dot (drawn on top of freshly redrawn grid) ----
         // Convert world coordinates to world-map fraction
         var playerTileX = camera.x / tileAdvanceX;
