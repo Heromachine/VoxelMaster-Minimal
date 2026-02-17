@@ -89,15 +89,21 @@ function generateMountainRidges(rng, size, grid) {
             // 30 % chance to turn left or right
             if (rng() < 0.30) dir = (dir + (rng() < 0.5 ? 1 : 3)) % 4;
 
-            var nx = x + DX[dir];
-            var ny = y + DY[dir];
-            if (!inPlayable(nx, ny)) {
-                // Bounce: try a perpendicular, then reverse
-                dir = (dir + (rng() < 0.5 ? 1 : 3)) % 4;
-                nx = x + DX[dir]; ny = y + DY[dir];
-                if (!inPlayable(nx, ny)) { dir = (dir + 2) % 4; nx = x + DX[dir]; ny = y + DY[dir]; }
+            // Find the next valid cell: must be in bounds AND not already mountain.
+            // Trying all 4 directions in order prevents the walk from ever looping
+            // back onto itself.  If every direction is blocked, stop the walk.
+            var moved = false;
+            for (var attempt = 0; attempt < 4; attempt++) {
+                var nx = x + DX[dir];
+                var ny = y + DY[dir];
+                if (inPlayable(nx, ny) && grid[ny * size + nx] !== BIOME_MOUNTAIN) {
+                    x = nx; y = ny;
+                    moved = true;
+                    break;
+                }
+                dir = (dir + 1) % 4;   // try the next cardinal direction
             }
-            if (inPlayable(nx, ny)) { x = nx; y = ny; }
+            if (!moved) break;   // completely surrounded — end walk early
         }
     }
 
