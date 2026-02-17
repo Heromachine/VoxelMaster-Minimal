@@ -241,6 +241,170 @@ function genMountainTile(mapObj, seed) {
 }
 
 // -----------------------------------------------------------------------
+// Directed mountain tile generation
+// -----------------------------------------------------------------------
+
+// Distance from point (px, py) to line segment (ax, ay)→(bx, by).
+function distToSeg(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var len2 = dx * dx + dy * dy;
+    if (len2 < 1e-10) return Math.sqrt((px-ax)*(px-ax) + (py-ay)*(py-ay));
+    var t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / len2));
+    var qx = ax + t*dx, qy = ay + t*dy;
+    return Math.sqrt((px-qx)*(px-qx) + (py-qy)*(py-qy));
+}
+
+// Directional edge fade: only fade toward edges NOT connected to another mountain tile.
+// Connected edges stay at full height so adjacent tiles can continue the ridge.
+function ridgeEdgeFade(x, y, w, h, hasN, hasS, hasE, hasW) {
+    var INF = 1e9;
+    var fx = INF, fy = INF;
+    if (!hasW) fx = Math.min(fx, x / BIOME_BLEND_WIDTH);
+    if (!hasE) fx = Math.min(fx, (w - 1 - x) / BIOME_BLEND_WIDTH);
+    if (!hasN) fy = Math.min(fy, y / BIOME_BLEND_WIDTH);
+    if (!hasS) fy = Math.min(fy, (h - 1 - y) / BIOME_BLEND_WIDTH);
+    var t = Math.min(1.0, Math.min(fx, fy));
+    if (t >= INF) t = 1.0;
+    return t * t * (3.0 - 2.0 * t);   // smoothstep
+}
+
+// Generate a 1024x1024 mountain tile whose ridge runs in the direction
+// indicated by ridgeKey (e.g. "NS", "NE", "SEW", "NSEW", "ISO", …).
+//
+// Height profile: high along the ridge path, falls off to ~85 on the sides.
+// The sides that connect to adjacent mountain tiles are NOT edge-blended —
+// the ridge extends all the way to those edges so neighboring tiles continue it.
+function genDirectionalMountainTile(mapObj, seed, ridgeKey) {
+    var detailFn = createPerlinNoise((seed ^ 0xF00DCAFE) >>> 0);
+    var w = mapObj.width, h = mapObj.height;
+    mapObj.heightScale = BIOME_HEIGHT_SCALE;
+
+    var hasN = ridgeKey.indexOf('N') >= 0;
+    var hasS = ridgeKey.indexOf('S') >= 0;
+    var hasE = ridgeKey.indexOf('E') >= 0;
+    var hasW = ridgeKey.indexOf('W') >= 0;
+    var connCount = (hasN?1:0) + (hasS?1:0) + (hasE?1:0) + (hasW?1:0);
+
+    var RIDGE_HW   = 0.28;  // half-width of ridge in normalised [0,1] coords
+    var BASE_ALT   = 82;    // altitude far from ridge (matches hillside connection)
+    var PEAK_ALT   = 248;   // altitude at ridge crest
+    var NOISE_AMP  = 18;    // ±amplitude of detail noise
+
+    for (var py = 0; py < h; py++) {
+        var ly = py / (h - 1);   // 0 = north edge, 1 = south edge
+        for (var px = 0; px < w; px++) {
+            var lx = px / (w - 1);   // 0 = west edge, 1 = east edge
+
+            // ---- Compute distance to the ridge path within this tile ----
+            var ridgeDist;
+
+            if      (hasN && hasS && !hasE && !hasW) {
+                // Straight vertical ridge — crest along x = 0.5
+                ridgeDist = Math.abs(lx - 0.5);
+
+            } else if (hasE && hasW && !hasN && !hasS) {
+                // Straight horizontal ridge — crest along y = 0.5
+                ridgeDist = Math.abs(ly - 0.5);
+
+            } else if (hasN && hasE && !hasS && !hasW) {
+                // NE corner — quarter-circle arc, center at top-right (1, 0)
+                ridgeDist = Math.abs(Math.sqrt((lx-1)*(lx-1) + ly*ly) - 0.5);
+
+            } else if (hasN && hasW && !hasS && !hasE) {
+                // NW corner — quarter-circle arc, center at top-left (0, 0)
+                ridgeDist = Math.abs(Math.sqrt(lx*lx + ly*ly) - 0.5);
+
+            } else if (hasS && hasE && !hasN && !hasW) {
+                // SE corner — quarter-circle arc, center at bottom-right (1, 1)
+                ridgeDist = Math.abs(Math.sqrt((lx-1)*(lx-1) + (ly-1)*(ly-1)) - 0.5);
+
+            } else if (hasS && hasW && !hasN && !hasE) {
+                // SW corner — quarter-circle arc, center at bottom-left (0, 1)
+                ridgeDist = Math.abs(Math.sqrt(lx*lx + (ly-1)*(ly-1)) - 0.5);
+
+            } else {
+                // T-junction, cross, end-cap, isolated — distance to nearest spoke
+                // (centre → each connected edge midpoint)
+                var minD = 1e9;
+                if (hasN) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.5, 0.0));
+                if (hasS) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.5, 1.0));
+                if (hasE) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 1.0, 0.5));
+                if (hasW) minD = Math.min(minD, distToSeg(lx, ly, 0.5, 0.5, 0.0, 0.5));
+                if (connCount === 0) {  // isolated peak: distance to center
+                    minD = Math.sqrt((lx-0.5)*(lx-0.5) + (ly-0.5)*(ly-0.5));
+                }
+                ridgeDist = minD;
+            }
+
+            // ---- Ridge height profile: quadratic falloff from crest ----
+            var profile = Math.max(0, 1.0 - ridgeDist / RIDGE_HW);
+            profile = profile * profile;   // sharpen
+
+            // ---- Detail noise ----
+            var nx = (px / w) * 4.0;
+            var ny = (py / h) * 4.0;
+            var noise = fbm(detailFn, nx, ny, 5, 2.0, 0.5) * NOISE_AMP;
+
+            var baseAlt = BASE_ALT + (PEAK_ALT - BASE_ALT) * profile + noise;
+
+            // ---- Directional edge fade ----
+            // Only blend to BIOME_TRANSITION_ALT at disconnected edges so the
+            // ridge flows seamlessly into adjacent mountain tiles.
+            var fade    = ridgeEdgeFade(px, py, w, h, hasN, hasS, hasE, hasW);
+            var edgeAlt = 85;
+            var altitude = Math.round(baseAlt * fade + edgeAlt * (1 - fade));
+            altitude = Math.max(80, Math.min(255, altitude));
+
+            var idx = (py << mapObj.shift) + px;
+            mapObj.altitude[idx] = altitude;
+            mapObj.color[idx]    = mountainColor(altitude, pixelVar(px, py));
+        }
+    }
+}
+
+// Scan the world map, find every unique mountain ridge configuration, allocate
+// one 1024x1024 map per configuration, and extend the global maps[] array.
+// Stores window.mountainRidgeMapIndex = { ridgeKey → mapIndex }.
+function generateMountainRidgeTiles(baseSeed) {
+    if (!window.worldMapData) return;
+
+    var grid = window.worldMapData;
+    var s    = WORLD_MAP_SIZE;
+
+    // Collect unique ridge keys from the playable inner area (cells 3–12)
+    var keyToMap = {};   // ridgeKey → newly allocated map object
+
+    for (var gy = 3; gy <= 12; gy++) {
+        for (var gx = 3; gx <= 12; gx++) {
+            if (grid[gy * s + gx] !== BIOME_MOUNTAIN) continue;
+            var key = getMountainRidgeKey(grid, gx, gy);
+            if (keyToMap[key]) continue;   // already created
+
+            var mMap = {
+                width:       1024,
+                height:      1024,
+                shift:       10,
+                altitude:    new Uint8Array(1024 * 1024),
+                color:       new Uint32Array(1024 * 1024),
+                heightScale: BIOME_HEIGHT_SCALE
+            };
+            genDirectionalMountainTile(mMap, (baseSeed ^ (key.length * 0xDEAD + key.charCodeAt(0) * 0xBEEF)) >>> 0, key);
+            keyToMap[key] = mMap;
+        }
+    }
+
+    // Add new maps to the global maps[] array (starting after the 4 base biomes)
+    var nextIdx = 4;
+    window.mountainRidgeMapIndex = {};
+    for (var k in keyToMap) {
+        maps[nextIdx] = keyToMap[k];
+        window.mountainRidgeMapIndex[k] = nextIdx;
+        nextIdx++;
+    }
+    console.log('Mountain ridge tiles generated:', Object.keys(window.mountainRidgeMapIndex));
+}
+
+// -----------------------------------------------------------------------
 // Entry point — generate all 4 biome tiles from one base seed.
 // Map slots:
 //   maps[0] = map              ← BEACH  (spawn tile uses this)

@@ -162,7 +162,7 @@ function initializeBiomeTileSystem() {
                            (tileY === -halfGrid - 1) || (tileY === halfGrid);
 
             if (isBorder) {
-                // Mountain wall around the playable area
+                // Mountain wall around the playable area — use generic mountain (index 3)
                 tileSystem.tileMap[tileKey] = 3;
             } else {
                 // Look up this tile's position in the 16x16 world map.
@@ -171,8 +171,15 @@ function initializeBiomeTileSystem() {
                 var wmY = Math.max(0, Math.min(WORLD_MAP_SIZE - 1, tileY + 8));
                 var biome = window.worldMapData[wmY * WORLD_MAP_SIZE + wmX];
 
-                // biome is 1–4; subtract 1 for zero-based map index
-                tileSystem.tileMap[tileKey] = Math.max(0, biome - 1);
+                if (biome === BIOME_MOUNTAIN && window.mountainRidgeMapIndex) {
+                    // Route each mountain cell to its oriented ridge tile
+                    var ridgeKey = getMountainRidgeKey(window.worldMapData, wmX, wmY);
+                    var ridgeIdx = window.mountainRidgeMapIndex[ridgeKey];
+                    tileSystem.tileMap[tileKey] = (ridgeIdx !== undefined) ? ridgeIdx : 3;
+                } else {
+                    // biome is 1–4; subtract 1 for zero-based map index
+                    tileSystem.tileMap[tileKey] = Math.max(0, biome - 1);
+                }
             }
             tileCount++;
         }

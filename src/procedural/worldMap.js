@@ -28,6 +28,18 @@ var BIOME_NOT_ALLOWED = [
     [0, 1, 0, 0, 0],  // 4: MOUNTAIN — NOT beach
 ];
 
+// Returns the canonical NSEW connection key for a mountain cell.
+// Only cardinal neighbors that are also mountain cells count.
+// Examples: "NS" (straight vertical), "NE" (corner), "NSE" (T-junction), "ISO" (alone).
+function getMountainRidgeKey(grid, gx, gy) {
+    var s = WORLD_MAP_SIZE;
+    var N = gy > 0      && grid[(gy - 1) * s + gx]      === BIOME_MOUNTAIN;
+    var S = gy < s - 1  && grid[(gy + 1) * s + gx]      === BIOME_MOUNTAIN;
+    var E = gx < s - 1  && grid[gy * s + (gx + 1)]      === BIOME_MOUNTAIN;
+    var W = gx > 0      && grid[gy * s + (gx - 1)]      === BIOME_MOUNTAIN;
+    return (N ? 'N' : '') + (S ? 'S' : '') + (E ? 'E' : '') + (W ? 'W' : '') || 'ISO';
+}
+
 // Count how many adjacency constraint violations exist for cell (gx, gy).
 function wm_checkConflicts(grid, gx, gy, range) {
     var centerType = grid[gy * WORLD_MAP_SIZE + gx];

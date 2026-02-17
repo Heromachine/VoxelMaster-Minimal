@@ -41,6 +41,10 @@ function generateTerrain(seedStr) {
 
     // 2. Generate one tile per biome type (beach, plains, hills, mountain)
     generateBiomeTiles(baseSeed);
+
+    // 3. Generate one oriented tile per unique mountain ridge configuration.
+    //    Adds entries to maps[] at indices 4+ and stores mountainRidgeMapIndex.
+    generateMountainRidgeTiles(baseSeed);
 }
 
 // -----------------------------------------------------------------------
