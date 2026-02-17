@@ -63,33 +63,38 @@ function generateWorldMap(seed) {
     var size = WORLD_MAP_SIZE;
     var grid = new Uint8Array(size * size);
 
-    // ---- Step 1: distance-based initial seeding ----
-    var cx = (size - 1) * 0.5;
-    var cy = (size - 1) * 0.5;
+    // ---- Step 1: Voronoi-point seeding ----
+    // Scatter random biome centers across the grid; each cell takes the nearest one.
+    // This produces organically shaped regions that look genuinely different per seed.
+    var numSeeds = 8 + Math.floor(rng() * 8);  // 8–15 seeds
+    var voronoi  = [];
+    for (var s = 0; s < numSeeds; s++) {
+        voronoi.push({
+            x:     rng() * size,
+            y:     rng() * size,
+            biome: 1 + Math.floor(rng() * BIOME_COUNT)
+        });
+    }
 
     for (var y = 0; y < size; y++) {
         for (var x = 0; x < size; x++) {
-            var dx   = (x - cx) / (size * 0.5);
-            var dy   = (y - cy) / (size * 0.5);
-            var dist = Math.sqrt(dx * dx + dy * dy);   // ~0 center, ~1.4 corner
-            var r    = rng();
-
-            if (dist > 0.90) {
-                grid[y * size + x] = (r < 0.85) ? BIOME_BEACH : BIOME_PLAINS;
-            } else if (dist > 0.70) {
-                grid[y * size + x] = (r < 0.55) ? BIOME_BEACH : BIOME_PLAINS;
-            } else if (dist > 0.50) {
-                grid[y * size + x] = (r < 0.55) ? BIOME_PLAINS : BIOME_HILLS;
-            } else if (dist > 0.30) {
-                grid[y * size + x] = (r < 0.50) ? BIOME_HILLS : BIOME_MOUNTAIN;
-            } else {
-                grid[y * size + x] = (r < 0.75) ? BIOME_MOUNTAIN : BIOME_HILLS;
+            var nearestDist  = Infinity;
+            var nearestBiome = BIOME_PLAINS;
+            for (var s = 0; s < voronoi.length; s++) {
+                var ddx = x - voronoi[s].x;
+                var ddy = y - voronoi[s].y;
+                var dd  = ddx * ddx + ddy * ddy;
+                if (dd < nearestDist) {
+                    nearestDist  = dd;
+                    nearestBiome = voronoi[s].biome;
+                }
             }
+            grid[y * size + x] = nearestBiome;
         }
     }
 
     // ---- Step 2: minimum-conflicts resolution ----
-    var range    = 2;        // check 2 cells in each direction
+    var range    = 1;        // check immediate neighbors only
     var maxPasses = 100;
     var total    = size * size;
 
