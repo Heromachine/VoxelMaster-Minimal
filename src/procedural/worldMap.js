@@ -7,11 +7,12 @@
 "use strict";
 
 // Biome type constants (used by worldMap, biomeGen, mapLoader)
-var BIOME_BEACH    = 1;
-var BIOME_PLAINS   = 2;
-var BIOME_HILLS    = 3;
-var BIOME_MOUNTAIN = 4;
-var BIOME_COUNT    = 4;   // number of defined biome types
+var BIOME_BEACH      = 1;
+var BIOME_PLAINS     = 2;
+var BIOME_HILLS      = 3;
+var BIOME_MOUNTAIN   = 4;
+var BIOME_TRANSITION = 5;  // sand↔grass blend belt; sits between BEACH and PLAINS
+var BIOME_COUNT      = 5;
 
 // World map grid dimension
 var WORLD_MAP_SIZE = 16;
@@ -38,6 +39,46 @@ function getMountainRidgeKey(grid, gx, gy) {
     var E = gx < s - 1  && grid[gy * s + (gx + 1)]      === BIOME_MOUNTAIN;
     var W = gx > 0      && grid[gy * s + (gx - 1)]      === BIOME_MOUNTAIN;
     return (N ? 'N' : '') + (S ? 'S' : '') + (E ? 'E' : '') + (W ? 'W' : '') || 'ISO';
+}
+
+// Returns the orientation key for a BIOME_TRANSITION cell.
+// The key is built from which cardinal neighbors are BIOME_PLAINS — those are
+// the "grass side" directions.  E.g. "N" = grass is north, sand faces south.
+// In genTransitionTile, hasN → grassy near top, so the sandy gradient
+// automatically faces away from the plains (i.e., toward the beach).
+function getTransitionKey(grid, gx, gy) {
+    var s = WORLD_MAP_SIZE;
+    var N = gy > 0      && grid[(gy - 1) * s + gx]      === BIOME_PLAINS;
+    var S = gy < s - 1  && grid[(gy + 1) * s + gx]      === BIOME_PLAINS;
+    var E = gx < s - 1  && grid[gy * s + (gx + 1)]      === BIOME_PLAINS;
+    var W = gx > 0      && grid[gy * s + (gx - 1)]      === BIOME_PLAINS;
+    return (N ? 'N' : '') + (S ? 'S' : '') + (E ? 'E' : '') + (W ? 'W' : '') || 'C';
+}
+
+// Post-pass: convert every PLAINS cell that touches a BEACH cell (cardinally
+// OR diagonally) into BIOME_TRANSITION.  Beach tiles keep their identity;
+// instead they are SURROUNDED by a one-cell-wide blend belt on all sides and
+// corners.  Cardinal-only detection produces straight-edge transitions;
+// diagonal detection also catches the corner cells so the belt wraps fully
+// around the beach cluster (45-degree corner tiles).
+function insertTransitionBiomes(grid) {
+    var size = WORLD_MAP_SIZE;
+    for (var gy = 0; gy < size; gy++) {
+        for (var gx = 0; gx < size; gx++) {
+            if (grid[gy * size + gx] !== BIOME_PLAINS) continue;
+            var nearBeach = false;
+            for (var dy = -1; dy <= 1 && !nearBeach; dy++) {
+                for (var dx = -1; dx <= 1 && !nearBeach; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    var nx = gx + dx, ny = gy + dy;
+                    if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+                        if (grid[ny * size + nx] === BIOME_BEACH) nearBeach = true;
+                    }
+                }
+            }
+            if (nearBeach) grid[gy * size + gx] = BIOME_TRANSITION;
+        }
+    }
 }
 
 // Count how many adjacency constraint violations exist for cell (gx, gy).
@@ -204,6 +245,9 @@ function generateWorldMap(seed) {
         }
         if (!anyConflict) break;
     }
+
+    // ---- Final pass: insert transition belt between beach and plains ----
+    insertTransitionBiomes(grid);
 
     return grid;
 }

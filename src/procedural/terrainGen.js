@@ -45,6 +45,10 @@ function generateTerrain(seedStr) {
     // 3. Generate one oriented tile per unique mountain ridge configuration.
     //    Adds entries to maps[] at indices 4+ and stores mountainRidgeMapIndex.
     generateMountainRidgeTiles(baseSeed);
+
+    // 4. Generate beach↔plains transition tiles (one per unique orientation key).
+    //    Always runs after mountain tiles so map indices don't collide.
+    generateTransitionTiles(baseSeed);
 }
 
 // -----------------------------------------------------------------------
@@ -88,6 +92,9 @@ function showSeedMenu() {
 
             // Place camera on the spawn terrain surface using the tile-aware sampler
             camera.height = getRawTerrainHeight(camera.x, camera.y) + player.normalHeight;
+
+            // Populate the tile legend with thumbnails of every generated map
+            BuildTileLegend();
 
             // Hide menu and start the game
             var menuEl = document.getElementById('seed-menu');

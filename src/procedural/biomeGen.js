@@ -416,6 +416,128 @@ function generateMountainRidgeTiles(baseSeed) {
 }
 
 // -----------------------------------------------------------------------
+// Transition tile generation (BEACH ↔ PLAINS blend belt)
+// -----------------------------------------------------------------------
+// Generates a 1024×1024 tile whose terrain smoothly blends from beach
+// (sand) on the "beach side" to plains (grass) on the "plains side".
+// The orientation is encoded in a key built from which cardinal directions
+// have plains neighbors: "N", "S", "E", "W", "NE", "NW", "SE", "SW",
+// "NS", "EW" (or combinations thereof).  All edges fade to
+// BIOME_TRANSITION_ALT so the adjacent beach and plains tiles connect
+// seamlessly through the engine's existing 128px overlap blending.
+function genTransitionTile(mapObj, seed, key) {
+    var noiseFn = createPerlinNoise((seed ^ 0xAB5C3D2F) >>> 0);
+    var w = mapObj.width, h = mapObj.height;
+    mapObj.heightScale = BIOME_HEIGHT_SCALE;
+
+    var ss = function(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+
+    var hasN = key.indexOf('N') >= 0;
+    var hasS = key.indexOf('S') >= 0;
+    var hasE = key.indexOf('E') >= 0;
+    var hasW = key.indexOf('W') >= 0;
+    var dirCount = (hasN?1:0) + (hasS?1:0) + (hasE?1:0) + (hasW?1:0);
+
+    for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+            var nx = x / (w - 1);   // 0 = left/west, 1 = right/east
+            var ny = y / (h - 1);   // 0 = top/north, 1 = bottom/south
+
+            // Grass weight (0 = full sand, 1 = full grass) from orientation key.
+            // Each direction contributes how "grassy" that direction is.
+            // Average of all active directions gives the blend factor at this pixel.
+            var grassW = 0.5;
+            if (dirCount > 0) {
+                var sum = 0;
+                if (hasN) sum += (1 - ny);   // grass is north  → grassy near top
+                if (hasS) sum += ny;          // grass is south  → grassy near bottom
+                if (hasE) sum += nx;          // grass is east   → grassy near right
+                if (hasW) sum += (1 - nx);   // grass is west   → grassy near left
+                grassW = sum / dirCount;
+            }
+
+            // Noise perturbation breaks up the straight blend boundary
+            var noiseV = fbm(noiseFn, nx * 4.5, ny * 4.5, 3, 2.0, 0.5);
+            grassW = Math.max(0, Math.min(1, grassW + noiseV * 0.13));
+            var t = ss(grassW);
+
+            // Per-pixel variation (same hash as other biomes)
+            var pv = pixelVar(x, y);
+
+            // Altitude: fixed at BIOME_TRANSITION_ALT so all four edges seamlessly
+            // meet every neighboring tile.  Beach and plains tiles both fade to 72
+            // at their edges; a transition tile at a different altitude creates a
+            // height mismatch moat on the sand side.  Color provides all visual
+            // distinction; height variation here only causes visible grid lines.
+            var altitude = BIOME_TRANSITION_ALT;
+
+            // Keep pv-based altitude values for color sampling only
+            var beachA  = 45 + (pv - 0.5) * 12;
+            var plainsA = 68 + (pv - 0.5) * 14;
+
+            // Color: pure sand↔grass lerp based on t — no green edge override.
+            // The tile blending system handles seam color mixing; forcing a green
+            // neutral at edges just produces visible green borders around the tile.
+            var wetFactor = 0.4 + (pv - 0.5) * 0.3;
+            var bCol = beachColor(beachA, wetFactor, pv);
+            var pCol = plainsColor(plainsA, pv);
+            var bR = bCol & 0xFF, bG = (bCol >> 8) & 0xFF, bB = (bCol >> 16) & 0xFF;
+            var pR = pCol & 0xFF, pG = (pCol >> 8) & 0xFF, pB = (pCol >> 16) & 0xFF;
+
+            var r = Math.round(bR + (pR - bR) * t);
+            var g = Math.round(bG + (pG - bG) * t);
+            var b = Math.round(bB + (pB - bB) * t);
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            var idx = (y << mapObj.shift) + x;
+            mapObj.altitude[idx] = altitude;
+            mapObj.color[idx]    = (0xFF000000 | (b << 16) | (g << 8) | r) >>> 0;
+        }
+    }
+}
+
+// Scan worldMapData for all BIOME_TRANSITION cells, generate one map per
+// unique orientation key, and register them in window.transitionMapIndex.
+// Always runs AFTER generateMountainRidgeTiles so indices don't collide.
+function generateTransitionTiles(baseSeed) {
+    if (!window.worldMapData) return;
+
+    var grid = window.worldMapData;
+    var s    = WORLD_MAP_SIZE;
+    var keyToMap = {};
+
+    for (var gy = 0; gy < s; gy++) {
+        for (var gx = 0; gx < s; gx++) {
+            if (grid[gy * s + gx] !== BIOME_TRANSITION) continue;
+            var key = getTransitionKey(grid, gx, gy);
+            if (keyToMap[key]) continue;
+
+            var tMap = {
+                width:       1024,
+                height:      1024,
+                shift:       10,
+                altitude:    new Uint8Array(1024 * 1024),
+                color:       new Uint32Array(1024 * 1024),
+                heightScale: BIOME_HEIGHT_SCALE
+            };
+            var tileSeed = (baseSeed ^ (key.length * 0x1337 + (key.charCodeAt(0) || 0) * 0xF00D)) >>> 0;
+            genTransitionTile(tMap, tileSeed, key);
+            keyToMap[key] = tMap;
+        }
+    }
+
+    // Append after whatever mountain ridge tiles were added (maps.length is the next free slot)
+    window.transitionMapIndex = {};
+    for (var k in keyToMap) {
+        window.transitionMapIndex[k] = maps.length;
+        maps.push(keyToMap[k]);
+    }
+    console.log('Transition tile keys generated:', Object.keys(window.transitionMapIndex));
+}
+
+// -----------------------------------------------------------------------
 // Entry point — generate all 4 biome tiles from one base seed.
 // Map slots:
 //   maps[0] = map              ← BEACH  (spawn tile uses this)

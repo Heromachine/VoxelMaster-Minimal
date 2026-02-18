@@ -43,7 +43,8 @@
         #fly-indicator {
             position: absolute;
             top: 20px;
-            left: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             color: #00ff00;
             font-family: monospace;
             font-size: 16px;
@@ -51,7 +52,44 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
             z-index: 10;
             display: none;
+            white-space: nowrap;
         }
+
+        /* ---- Tile Legend ---- */
+        #tile-legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            padding: 10px 12px;
+            font-family: monospace;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.85);
+            z-index: 10;
+            max-height: calc(100% - 40px);
+            overflow-y: auto;
+            pointer-events: none;
+            display: none;
+        }
+        .tl-section { margin-bottom: 10px; }
+        .tl-title {
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: rgba(0, 255, 136, 0.8);
+            margin-bottom: 4px;
+        }
+        .tl-row { display: flex; flex-wrap: wrap; gap: 4px; }
+        .tl-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .tl-thumb {
+            width: 56px;
+            height: 56px;
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .tl-label { font-size: 9px; color: rgba(255,255,255,0.55); letter-spacing: 1px; text-align: center; }
 
         #fps-counter {
             position: absolute;
@@ -71,8 +109,7 @@
             right: 20px;
             width: 200px;
             height: 200px;
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            background: rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
             z-index: 10;
             image-rendering: auto;
         }
@@ -253,6 +290,7 @@
     <div id="crosshair"></div>
     <div id="fly-indicator">FLY MODE [F to toggle]</div>
     <div id="fps-counter">FPS: 0</div>
+    <div id="tile-legend"></div>
     <canvas id="minimap" width="400" height="400"></canvas>
     <canvas id="worldmap-canvas" width="160" height="160"></canvas>
     <div id="optimization-legend">
@@ -263,6 +301,7 @@
         <div>[4] Tile Blending: ON</div>
         <div>[5] Mode: Tiled (Slow)</div>
         <div>[M] Minimap: ON</div>
+        <div>[L] Tile Legend: OFF</div>
         <button id="clear-cache-btn" onclick="localStorage.removeItem('voxelspace_display_config'); this.textContent = 'Cleared!'; setTimeout(() => this.textContent = 'Clear Cache', 1500);">Clear Cache</button>
     </div>
 </div>
@@ -280,6 +319,7 @@
 <script src="src/rendering/cubeRenderer.js"></script>
 <script src="src/rendering/itemRenderer.js"></script>
 <script src="src/rendering/minimap.js"></script>
+<script src="src/rendering/tileLegend.js"></script>
 
 <!-- Entities -->
 <script src="src/entities/camera.js"></script>

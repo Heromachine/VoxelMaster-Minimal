@@ -176,6 +176,11 @@ function initializeBiomeTileSystem() {
                     var ridgeKey = getMountainRidgeKey(window.worldMapData, wmX, wmY);
                     var ridgeIdx = window.mountainRidgeMapIndex[ridgeKey];
                     tileSystem.tileMap[tileKey] = (ridgeIdx !== undefined) ? ridgeIdx : 3;
+                } else if (biome === BIOME_TRANSITION && window.transitionMapIndex) {
+                    // Route each transition cell to its oriented blend tile
+                    var tKey = getTransitionKey(window.worldMapData, wmX, wmY);
+                    var tIdx = window.transitionMapIndex[tKey];
+                    tileSystem.tileMap[tileKey] = (tIdx !== undefined) ? tIdx : 0; // fallback: beach
                 } else {
                     // biome is 1–4; subtract 1 for zero-based map index
                     tileSystem.tileMap[tileKey] = Math.max(0, biome - 1);

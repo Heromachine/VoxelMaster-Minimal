@@ -52,6 +52,15 @@ function DetectKeysDown(e) {
             console.log("Minimap: " + (renderOpts.minimapVisible ? "ON" : "OFF"));
             updateOptimizationLegend();
             break;
+        case 76: {                               // L - Toggle tile legend
+            var legendEl = document.getElementById('tile-legend');
+            if (legendEl) {
+                var isOn = legendEl.style.display !== 'none' && legendEl.style.display !== '';
+                legendEl.style.display = isOn ? 'none' : 'block';
+                updateOptimizationLegend();
+            }
+            break;
+        }
         case 54:                                 // 6 - Cycle render mode
             var modes = ['tiled', 'cached', 'direct', 'subdivided'];
             var currentIndex = modes.indexOf(renderOpts.renderMode);
@@ -97,6 +106,8 @@ function updateOptimizationLegend() {
             'direct': 'Direct (Fastest)',
             'subdivided': 'Subdivided (Visual)'
         };
+        var legendEl   = document.getElementById('tile-legend');
+        var legendOn   = legendEl && legendEl.style.display !== 'none' && legendEl.style.display !== '';
         legend.innerHTML =
             '<div><strong>Rendering Optimizations:</strong></div>' +
             '<div>[1] Tile Culling: ' + (renderOpts.tileCulling ? 'ON' : 'OFF') + '</div>' +
@@ -104,7 +115,8 @@ function updateOptimizationLegend() {
             '<div>[3] Depth Interp: ' + (renderOpts.depthInterp ? 'ON' : 'OFF') + '</div>' +
             '<div>[4] Tile Blending: ' + (renderOpts.tileBlending ? 'ON' : 'OFF') + '</div>' +
             '<div>[6] Mode: ' + modeNames[renderOpts.renderMode] + '</div>' +
-            '<div>[M] Minimap: ' + (renderOpts.minimapVisible ? 'ON' : 'OFF') + '</div>';
+            '<div>[M] Minimap: ' + (renderOpts.minimapVisible ? 'ON' : 'OFF') + '</div>' +
+            '<div>[L] Tile Legend: ' + (legendOn ? 'ON' : 'OFF') + '</div>';
     }
 }
 
