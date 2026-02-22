@@ -82,4 +82,36 @@ function spawnBiomeTrees() {
         }
     }
     console.log('Trees spawned:', items.length);
+    buildTreeLUT();
+}
+
+// -----------------------------------------------------------------------
+// Tree LUT — tileKey → [indices into items[]]
+// -----------------------------------------------------------------------
+// Built once after spawn, used by the tile editor to resample tree heights
+// in O(k) time (k = trees on the changed tile) instead of scanning all items.
+
+var treeLUT = {};
+
+function buildTreeLUT() {
+    treeLUT = {};
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].type !== 'tree') continue;
+        var c   = getTileCoords(items[i].x, items[i].y);
+        var key = getTileKey(c.tileX, c.tileY);
+        if (!treeLUT[key]) treeLUT[key] = [];
+        treeLUT[key].push(i);
+    }
+}
+
+// After a tile's map is swapped, resample every tree that sits on it.
+// getRawTerrainHeight already reads from the updated tileSystem.tileMap,
+// so calling it here yields the correct new ground level immediately.
+function updateTreesOnTile(tileKey) {
+    var indices = treeLUT[tileKey];
+    if (!indices) return;
+    for (var i = 0; i < indices.length; i++) {
+        var item = items[indices[i]];
+        item.z = getRawTerrainHeight(item.x, item.y);
+    }
 }

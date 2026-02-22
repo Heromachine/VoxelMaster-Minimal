@@ -162,8 +162,7 @@ function initializeBiomeTileSystem() {
                            (tileY === -halfGrid - 1) || (tileY === halfGrid);
 
             if (isBorder) {
-                // Mountain wall around the playable area — use generic mountain (index 3)
-                tileSystem.tileMap[tileKey] = 3;
+                // Border tiles left empty — no mountain wall at world edge
             } else {
                 // Look up this tile's position in the 16x16 world map.
                 // Tile (0,0) → cell (8,8); tile (-5,-5) → cell (3,3); etc.
@@ -181,6 +180,16 @@ function initializeBiomeTileSystem() {
                     var tKey = getTransitionKey(window.worldMapData, wmX, wmY);
                     var tIdx = window.transitionMapIndex[tKey];
                     tileSystem.tileMap[tileKey] = (tIdx !== undefined) ? tIdx : 0; // fallback: beach
+                } else if (biome === BIOME_RIDGE && window.wideRidgeMapIndex) {
+                    // Route each wide ridge cell to its oriented straight-ridge tile
+                    var rKey = getRidgeOrientationKey(window.worldMapData, wmX, wmY);
+                    var rIdx = window.wideRidgeMapIndex[rKey];
+                    tileSystem.tileMap[tileKey] = (rIdx !== undefined) ? rIdx : 3; // fallback: mountain
+                } else if (biome === BIOME_FOOTHILL && window.foothillMapIndex) {
+                    // Route each foothill cell to its oriented ramp tile
+                    var fKey = getFoothillKey(window.worldMapData, wmX, wmY);
+                    var fIdx = window.foothillMapIndex[fKey];
+                    tileSystem.tileMap[tileKey] = (fIdx !== undefined) ? fIdx : 1; // fallback: plains
                 } else {
                     // biome is 1–4; subtract 1 for zero-based map index
                     tileSystem.tileMap[tileKey] = Math.max(0, biome - 1);

@@ -263,12 +263,275 @@
             letter-spacing: 3px;
             min-height: 18px;
         }
+
+        /* ---- Main Menu LOAD button ---- */
+        #load-btn {
+            width: 100%;
+            margin-top: 10px;
+            padding: 11px;
+            background: rgba(0, 200, 255, 0.08);
+            border: 1px solid rgba(0, 200, 255, 0.35);
+            color: #00c8ff;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        #load-btn:hover { background: rgba(0, 200, 255, 0.2); }
+
+        /* ---- Zelda-style Load Screen ---- */
+        #load-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 480px;
+        }
+        #load-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #00ff88;
+            letter-spacing: 10px;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+        #load-slots {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            width: 100%;
+        }
+        .ls-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(0, 200, 255, 0.3);
+            padding: 18px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            font-family: monospace;
+        }
+        .ls-card:hover { background: rgba(0,200,255,0.07); border-color: rgba(0,200,255,0.65); }
+        .ls-card.ls-empty { opacity: 0.45; cursor: default; }
+        .ls-card.ls-empty:hover { background: rgba(255,255,255,0.03); border-color: rgba(0,200,255,0.3); }
+        .ls-file-num  { font-size: 11px; letter-spacing: 4px; color: rgba(0,200,255,0.6); }
+        .ls-seed      { font-size: 15px; font-weight: bold; color: #fff; letter-spacing: 2px; }
+        .ls-date      { font-size: 10px; color: rgba(255,255,255,0.38); letter-spacing: 1px; }
+        .ls-empty-label { font-size: 14px; color: rgba(255,255,255,0.3); letter-spacing: 3px; }
+        .ls-load-btn  {
+            align-self: flex-start;
+            margin-top: 6px;
+            padding: 7px 18px;
+            background: rgba(0,255,136,0.1);
+            border: 1px solid rgba(0,255,136,0.45);
+            color: #00ff88;
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            cursor: pointer;
+        }
+        .ls-load-btn:hover { background: rgba(0,255,136,0.25); }
+        #load-back-btn {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.4);
+            font-family: monospace;
+            font-size: 12px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            padding: 4px 0;
+        }
+        #load-back-btn:hover { color: rgba(255,255,255,0.8); }
+        #import-label {
+            color: rgba(0,200,255,0.5);
+            font-size: 11px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        #import-label:hover { color: rgba(0,200,255,0.9); }
+
+        /* ---- In-game Buttons (bottom right) ---- */
+        #game-buttons {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 20;
+        }
+        .game-btn {
+            padding: 9px 18px;
+            background: rgba(0,0,0,0.65);
+            border: 1px solid rgba(0,255,136,0.4);
+            color: #00ff88;
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            cursor: pointer;
+            transition: background 0.12s, border-color 0.12s;
+            text-align: center;
+        }
+        .game-btn:hover { background: rgba(0,255,136,0.12); border-color: rgba(0,255,136,0.75); }
+        #edit-btn.active { background: rgba(255,215,0,0.15); border-color: gold; color: gold; }
+
+        /* ---- Save Popup ---- */
+        #save-popup {
+            display: none;
+            position: absolute;
+            bottom: 160px;
+            right: 20px;
+            background: #07070f;
+            border: 1px solid rgba(0,255,136,0.35);
+            padding: 14px 16px;
+            z-index: 30;
+            font-family: monospace;
+            min-width: 240px;
+        }
+        #save-popup-title {
+            font-size: 10px;
+            letter-spacing: 4px;
+            color: rgba(0,255,136,0.55);
+            margin-bottom: 10px;
+        }
+        .sp-slot {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 9px 10px;
+            border: 1px solid rgba(0,200,255,0.22);
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: background 0.12s;
+        }
+        .sp-slot:hover { background: rgba(0,200,255,0.08); border-color: rgba(0,200,255,0.5); }
+        .sp-num    { font-size: 9px; letter-spacing: 3px; color: rgba(0,200,255,0.55); }
+        .sp-seed   { font-size: 12px; font-weight: bold; color: #fff; }
+        .sp-date   { font-size: 9px; color: rgba(255,255,255,0.35); }
+        .sp-empty  { font-size: 11px; color: rgba(255,255,255,0.25); letter-spacing: 1px; }
+        .sp-action { font-size: 10px; color: #00ff88; letter-spacing: 1px; margin-top: 2px; }
+        #export-btn {
+            width: 100%;
+            padding: 7px;
+            background: rgba(0,200,255,0.07);
+            border: 1px solid rgba(0,200,255,0.3);
+            color: #00c8ff;
+            font-family: monospace;
+            font-size: 11px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            margin-top: 2px;
+        }
+        #export-btn:hover { background: rgba(0,200,255,0.18); }
+
+        /* ---- Tile Editor: Floating Picker Panel ---- */
+        #edit-picker-panel {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 190px;
+            height: 100%;
+            background: rgba(7,7,15,0.90);
+            border-left: 1px solid rgba(0,255,136,0.2);
+            flex-direction: column;
+            font-family: monospace;
+            z-index: 200;
+        }
+        #edit-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(0,255,136,0.15);
+            font-size: 9px;
+            letter-spacing: 3px;
+            color: rgba(0,255,136,0.7);
+            flex-shrink: 0;
+        }
+        #edit-panel-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.35);
+            cursor: pointer;
+            font-size: 15px;
+            line-height: 1;
+            padding: 0;
+        }
+        #edit-panel-close:hover { color: #fff; }
+        #edit-picker-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .ep-group-label {
+            font-size: 9px;
+            letter-spacing: 4px;
+            color: rgba(0,255,136,0.55);
+            margin: 10px 0 3px;
+            border-bottom: 1px solid rgba(0,255,136,0.15);
+            padding-bottom: 3px;
+        }
+        .ep-group-label:first-child { margin-top: 2px; }
+        .ep-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 6px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 0.1s, border-color 0.1s;
+        }
+        .ep-item:hover { background: rgba(0,255,136,0.07); border-color: rgba(0,255,136,0.3); }
+        .ep-item.ep-selected { background: rgba(255,215,0,0.1); border-color: gold; }
+        .ep-thumb {
+            width: 52px;
+            height: 52px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            flex-shrink: 0;
+        }
+        .ep-label { font-size: 9px; color: rgba(255,255,255,0.55); letter-spacing: 1px; }
+
+        /* ---- Tile Editor: Bottom HUD ---- */
+        #edit-hud {
+            display: none;
+            position: fixed;
+            bottom: 58px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.70);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 6px 18px;
+            font-family: monospace;
+            font-size: 11px;
+            color: rgba(255,255,255,0.65);
+            z-index: 200;
+            white-space: nowrap;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .edit-hud-key { color: rgba(0,255,136,0.75); letter-spacing: 1px; }
+        .edit-hud-val { color: #ffd700; margin-right: 4px; }
+        .edit-hud-sep { color: rgba(255,255,255,0.2); margin: 0 6px; }
+        .edit-hud-hint { color: rgba(255,255,255,0.28); font-size: 10px; }
     </style>
 </head>
 <body>
 
 <!-- Seed Menu -->
 <div id="seed-menu">
+    <!-- New World Card -->
     <div id="seed-card">
         <div id="seed-title">VOXELMASTER</div>
         <div id="seed-subtitle">TERRAIN ENGINE</div>
@@ -279,8 +542,20 @@
                 <button id="random-seed-btn">RNG</button>
             </div>
             <button id="generate-btn">GENERATE WORLD</button>
+            <button id="load-btn">LOAD WORLD</button>
             <div id="gen-progress"></div>
         </div>
+    </div>
+
+    <!-- Load Screen (Zelda-style file select) -->
+    <div id="load-screen">
+        <div id="load-title">SELECT FILE</div>
+        <div id="load-slots"></div>
+        <button id="load-back-btn">← NEW WORLD</button>
+        <label id="import-label">
+            IMPORT FILE ▸
+            <input type="file" id="import-file-input" accept=".json" style="display:none">
+        </label>
     </div>
 </div>
 
@@ -304,6 +579,41 @@
         <div>[L] Tile Legend: OFF</div>
         <button id="clear-cache-btn" onclick="localStorage.removeItem('voxelspace_display_config'); this.textContent = 'Cleared!'; setTimeout(() => this.textContent = 'Clear Cache', 1500);">Clear Cache</button>
     </div>
+
+    <!-- In-game buttons: EDIT + SAVE (shown after world generation) -->
+    <div id="game-buttons">
+        <button id="edit-btn" class="game-btn">EDIT</button>
+        <button id="save-btn" class="game-btn">SAVE</button>
+    </div>
+
+    <!-- Save slot popup -->
+    <div id="save-popup">
+        <div id="save-popup-title">SAVE WORLD</div>
+        <div id="sp-slot-0" class="sp-slot"></div>
+        <div id="sp-slot-1" class="sp-slot"></div>
+        <div id="sp-slot-2" class="sp-slot"></div>
+        <button id="export-btn">EXPORT JSON</button>
+    </div>
+</div>
+
+<!-- Tile Editor: Floating palette panel (right side) -->
+<div id="edit-picker-panel">
+    <div id="edit-panel-header">
+        <span>PAINT TOOL</span>
+        <button id="edit-panel-close">✕</button>
+    </div>
+    <div id="edit-picker-list"></div>
+</div>
+
+<!-- Tile Editor: Bottom HUD -->
+<div id="edit-hud">
+    <span class="edit-hud-key">TARGET</span>
+    <span class="edit-hud-val" id="edit-hud-target">—</span>
+    <span class="edit-hud-sep">·</span>
+    <span class="edit-hud-key">PAINT</span>
+    <span class="edit-hud-val" id="edit-hud-paint">—</span>
+    <span class="edit-hud-sep">·</span>
+    <span class="edit-hud-hint">SCROLL cycle &nbsp;·&nbsp; CLICK place &nbsp;·&nbsp; E or EDIT exit</span>
 </div>
 
 <!-- Module: Display Config -->
@@ -316,6 +626,8 @@
 <!-- Rendering -->
 <script src="src/rendering/screenBuffer.js"></script>
 <script src="src/rendering/voxelEngine.js"></script>
+<!-- Distance LOD (far 10% of draw distance rendered flat) — remove to disable -->
+<script src="src/rendering/lod/distanceLOD.js"></script>
 <script src="src/rendering/cubeRenderer.js"></script>
 <script src="src/rendering/itemRenderer.js"></script>
 <script src="src/rendering/minimap.js"></script>
@@ -338,8 +650,20 @@
 <!-- Map -->
 <script src="src/map/mapLoader.js"></script>
 
+<!-- Editor -->
+<script src="src/editor/tileEditor.js"></script>
+<script src="src/editor/worldSave.js"></script>
+
 <!-- Main -->
 <script src="src/main.js"></script>
+
+<script>
+// Wire editor and save/load events after all scripts are loaded
+window.addEventListener('load', function() {
+    initEditorEvents();
+    initSaveLoadSystem();
+});
+</script>
 
 </body>
 </html>

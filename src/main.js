@@ -47,6 +47,7 @@ function Draw(timestamp) {
         RenderItems();
         RenderMinimap();
         Flip();
+        if (typeof DrawEditOverlay === 'function') DrawEditOverlay();
         frames++;
         fpsFrames++;
 

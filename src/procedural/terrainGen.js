@@ -49,6 +49,14 @@ function generateTerrain(seedStr) {
     // 4. Generate beach↔plains transition tiles (one per unique orientation key).
     //    Always runs after mountain tiles so map indices don't collide.
     generateTransitionTiles(baseSeed);
+
+    // 5. Generate wide straight ridge tiles (NS and/or EW only).
+    //    Always runs after transition tiles so map indices don't collide.
+    generateStraightRidgeTiles(baseSeed);
+
+    // 6. Generate foothill ramp tiles (one per unique orientation key).
+    //    Always runs last so map indices don't collide with earlier tiles.
+    generateFoothillTiles(baseSeed);
 }
 
 // -----------------------------------------------------------------------
@@ -99,6 +107,10 @@ function showSeedMenu() {
             // Hide menu and start the game
             var menuEl = document.getElementById('seed-menu');
             if (menuEl) menuEl.style.display = 'none';
+
+            // Show in-game buttons (EDIT + SAVE)
+            var gameBtns = document.getElementById('game-buttons');
+            if (gameBtns) gameBtns.style.display = 'flex';
 
             flattenTerrainUnderCube();
             Draw();

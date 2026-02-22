@@ -94,4 +94,20 @@ function BuildTileLegend() {
         });
         addSection('TRANSITION', transItems);
     }
+
+    // ---- Wide straight ridge tiles ----
+    if (window.wideRidgeMapIndex) {
+        var ridgeItems = Object.keys(window.wideRidgeMapIndex).sort().map(function(k) {
+            return { map: maps[window.wideRidgeMapIndex[k]], label: k };
+        });
+        addSection('RIDGE', ridgeItems);
+    }
+
+    // ---- Foothill ramp tiles ----
+    if (window.foothillMapIndex) {
+        var foothillItems = Object.keys(window.foothillMapIndex).sort().map(function(k) {
+            return { map: maps[window.foothillMapIndex[k]], label: k };
+        });
+        addSection('FOOTHILLS', foothillItems);
+    }
 }

@@ -12,7 +12,9 @@ var BIOME_PLAINS     = 2;
 var BIOME_HILLS      = 3;
 var BIOME_MOUNTAIN   = 4;
 var BIOME_TRANSITION = 5;  // sand↔grass blend belt; sits between BEACH and PLAINS
-var BIOME_COUNT      = 5;
+var BIOME_RIDGE      = 6;  // wide, very tall straight ridge — NS or EW only, never turns
+var BIOME_FOOTHILL   = 7;  // gradual ramp from plains up to ridge; post-pass only
+var BIOME_COUNT      = 7;
 
 // World map grid dimension
 var WORLD_MAP_SIZE = 16;
@@ -20,13 +22,16 @@ var WORLD_MAP_SIZE = 16;
 // Adjacency constraint table: NOT_ALLOWED[a][b] = 1 means biome a cannot be
 // directly adjacent to biome b.
 //
-//              0  B  P  H  M
+//              0  B  P  H  M  T  R  F
 var BIOME_NOT_ALLOWED = [
-    [0, 0, 0, 0, 0],  // 0: empty/undecided — no restrictions
-    [0, 0, 0, 1, 1],  // 1: BEACH  — ok with beach & plains; NOT hills or mountain
-    [0, 0, 0, 0, 0],  // 2: PLAINS — ok with everything
-    [0, 1, 0, 0, 0],  // 3: HILLS  — NOT beach
-    [0, 1, 0, 0, 0],  // 4: MOUNTAIN — NOT beach
+    [0, 0, 0, 0, 0, 0, 0, 0],  // 0: empty/undecided — no restrictions
+    [0, 0, 0, 1, 1, 0, 1, 0],  // 1: BEACH  — NOT hills, mountain, or ridge
+    [0, 0, 0, 0, 0, 0, 0, 0],  // 2: PLAINS — ok with everything
+    [0, 1, 0, 0, 0, 0, 0, 0],  // 3: HILLS  — NOT beach
+    [0, 1, 0, 0, 0, 0, 0, 0],  // 4: MOUNTAIN — NOT beach
+    [0, 0, 0, 0, 0, 0, 0, 0],  // 5: TRANSITION — (post-pass only; not in constraint loop)
+    [0, 1, 0, 0, 0, 0, 0, 0],  // 6: RIDGE — NOT beach
+    [0, 0, 0, 0, 0, 0, 0, 0],  // 7: FOOTHILL  — (post-pass only; not in constraint loop)
 ];
 
 // Returns the canonical NSEW connection key for a mountain cell.
@@ -39,6 +44,52 @@ function getMountainRidgeKey(grid, gx, gy) {
     var E = gx < s - 1  && grid[gy * s + (gx + 1)]      === BIOME_MOUNTAIN;
     var W = gx > 0      && grid[gy * s + (gx - 1)]      === BIOME_MOUNTAIN;
     return (N ? 'N' : '') + (S ? 'S' : '') + (E ? 'E' : '') + (W ? 'W' : '') || 'ISO';
+}
+
+// Returns 'NS' or 'EW' for a BIOME_RIDGE cell based on which cardinal
+// neighbors are also BIOME_RIDGE.  Isolated cells default to 'NS'.
+function getRidgeOrientationKey(grid, gx, gy) {
+    var s = WORLD_MAP_SIZE;
+    var N = gy > 0      && grid[(gy - 1) * s + gx] === BIOME_RIDGE;
+    var S = gy < s - 1  && grid[(gy + 1) * s + gx] === BIOME_RIDGE;
+    var E = gx < s - 1  && grid[gy * s + (gx + 1)] === BIOME_RIDGE;
+    var W = gx > 0      && grid[gy * s + (gx - 1)] === BIOME_RIDGE;
+    if (N || S) return 'NS';   // vertical connection present → NS tile
+    if (E || W) return 'EW';   // horizontal connection present → EW tile
+    return 'NS';               // isolated pillar — default to NS
+}
+
+// Straight ridge walks: each walk picks one axis (NS or EW) and never turns.
+// This guarantees every BIOME_RIDGE cell has only NS or EW neighbors,
+// so getRidgeOrientationKey always returns a valid orientation.
+function generateRidgeWalks(rng, size, grid) {
+    function isSpawn(x, y) { return (x === 8 && y === 8) || (x === 9 && y === 8); }
+    function inPlayable(x, y) { return x >= 3 && x <= 12 && y >= 3 && y <= 12; }
+
+    var numWalks = 1 + Math.floor(rng() * 2);   // 1 or 2 straight ridges
+    for (var w = 0; w < numWalks; w++) {
+        // Pick a random playable start cell
+        var sx, sy, att = 0;
+        do {
+            sx = 3 + Math.floor(rng() * 10);
+            sy = 3 + Math.floor(rng() * 10);
+        } while ((isSpawn(sx, sy) || grid[sy * size + sx] !== 0) && ++att < 30);
+
+        var isNS  = rng() < 0.5;   // true = vertical ridge, false = horizontal
+        var dx    = isNS ? 0 : 1;
+        var dy    = isNS ? 1 : 0;
+        var len   = 3 + Math.floor(rng() * 5);  // 3–7 cells long
+
+        // Centre the walk on the start cell
+        var startX = sx - Math.floor(len / 2) * dx;
+        var startY = sy - Math.floor(len / 2) * dy;
+        for (var i = 0; i < len; i++) {
+            var cx = startX + i * dx, cy = startY + i * dy;
+            if (inPlayable(cx, cy) && !isSpawn(cx, cy)) {
+                grid[cy * size + cx] = BIOME_RIDGE;
+            }
+        }
+    }
 }
 
 // Returns the orientation key for a BIOME_TRANSITION cell.
@@ -77,6 +128,41 @@ function insertTransitionBiomes(grid) {
                 }
             }
             if (nearBeach) grid[gy * size + gx] = BIOME_TRANSITION;
+        }
+    }
+}
+
+// Returns the orientation key for a BIOME_FOOTHILL cell.
+// The key is built from which cardinal neighbors are BIOME_RIDGE — the "uphill"
+// direction(s).  E.g. "N" = ridge is north, so terrain rises toward the top.
+function getFoothillKey(grid, gx, gy) {
+    var s = WORLD_MAP_SIZE;
+    var N = gy > 0      && grid[(gy - 1) * s + gx]  === BIOME_RIDGE;
+    var S = gy < s - 1  && grid[(gy + 1) * s + gx]  === BIOME_RIDGE;
+    var E = gx < s - 1  && grid[gy * s + (gx + 1)]  === BIOME_RIDGE;
+    var W = gx > 0      && grid[gy * s + (gx - 1)]  === BIOME_RIDGE;
+    return (N ? 'N' : '') + (S ? 'S' : '') + (E ? 'E' : '') + (W ? 'W' : '') || 'C';
+}
+
+// Post-pass: convert every PLAINS cell that cardinally touches a RIDGE cell
+// into BIOME_FOOTHILL.  Creates a one-cell-wide ramp belt around the ridge wall.
+// Only cardinal adjacency (no diagonals) — corners don't need a ramp.
+// Runs after insertTransitionBiomes so TRANSITION cells are left alone.
+function insertFoothillBiomes(grid) {
+    var size = WORLD_MAP_SIZE;
+    var DX = [0, 0, 1, -1];
+    var DY = [-1, 1, 0, 0];
+    for (var gy = 0; gy < size; gy++) {
+        for (var gx = 0; gx < size; gx++) {
+            if (grid[gy * size + gx] !== BIOME_PLAINS) continue;
+            var nearRidge = false;
+            for (var d = 0; d < 4 && !nearRidge; d++) {
+                var nx = gx + DX[d], ny = gy + DY[d];
+                if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+                    if (grid[ny * size + nx] === BIOME_RIDGE) nearRidge = true;
+                }
+            }
+            if (nearRidge) grid[gy * size + gx] = BIOME_FOOTHILL;
         }
     }
 }
@@ -214,7 +300,10 @@ function generateWorldMap(seed) {
     // ---- Step 2: Overlay mountain ridges ----
     generateMountainRidges(rng, size, grid);
 
-    // ---- Step 3: minimum-conflicts (mountain cells are locked) ----
+    // ---- Step 2b: Overlay straight wide ridges (BIOME_RIDGE) ----
+    generateRidgeWalks(rng, size, grid);
+
+    // ---- Step 3: minimum-conflicts (mountain + ridge cells are locked) ----
     // Any non-mountain cell adjacent to a mountain must become plains or hills —
     // the constraint table already encodes this; the resolver picks the best type.
     var range    = 1;
@@ -227,6 +316,7 @@ function generateWorldMap(seed) {
             var gx = Math.floor(rng() * size);
             var gy = Math.floor(rng() * size);
             if (grid[gy * size + gx] === BIOME_MOUNTAIN) continue; // locked
+            if (grid[gy * size + gx] === BIOME_RIDGE)    continue; // locked
 
             var numConflicts = wm_checkConflicts(grid, gx, gy, range);
             if (numConflicts > 0) {
@@ -248,6 +338,9 @@ function generateWorldMap(seed) {
 
     // ---- Final pass: insert transition belt between beach and plains ----
     insertTransitionBiomes(grid);
+
+    // ---- Final pass 2: insert foothill ramp belt between plains and ridge ----
+    insertFoothillBiomes(grid);
 
     return grid;
 }

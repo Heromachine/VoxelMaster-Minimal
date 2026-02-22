@@ -47,6 +47,11 @@ function DetectKeysDown(e) {
             console.log("Tile blending: " + (renderOpts.tileBlending ? "ON" : "OFF"));
             updateOptimizationLegend();
             break;
+        case 71:                                 // G - Toggle ground floor cap
+            renderOpts.groundFloor = !renderOpts.groundFloor;
+            console.log("Ground floor: " + (renderOpts.groundFloor ? "ON" : "OFF"));
+            updateOptimizationLegend();
+            break;
         case 77:                                 // M - Toggle minimap
             renderOpts.minimapVisible = !renderOpts.minimapVisible;
             console.log("Minimap: " + (renderOpts.minimapVisible ? "ON" : "OFF"));
@@ -114,6 +119,7 @@ function updateOptimizationLegend() {
             '<div>[2] Bilinear Filter: ' + (renderOpts.bilinearFilter ? 'ON' : 'OFF') + '</div>' +
             '<div>[3] Depth Interp: ' + (renderOpts.depthInterp ? 'ON' : 'OFF') + '</div>' +
             '<div>[4] Tile Blending: ' + (renderOpts.tileBlending ? 'ON' : 'OFF') + '</div>' +
+            '<div>[G] Ground Floor: ' + (renderOpts.groundFloor ? 'ON' : 'OFF') + '</div>' +
             '<div>[6] Mode: ' + modeNames[renderOpts.renderMode] + '</div>' +
             '<div>[M] Minimap: ' + (renderOpts.minimapVisible ? 'ON' : 'OFF') + '</div>' +
             '<div>[L] Tile Legend: ' + (legendOn ? 'ON' : 'OFF') + '</div>';

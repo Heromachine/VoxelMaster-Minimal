@@ -535,13 +535,30 @@ function Render_Tiled(){
                     currentColors[i] = terrainData.color;
                 }
 
+                // Distance LOD — flatten color in far 10% of draw distance
+                if(typeof lodApply === 'function') finalColor = lodApply(finalColor, finalHeight, z);
+
                 var heightonscreen=(camera.height-finalHeight)*invz+camera.horizon;
                 if(heightonscreen<hiddeny[i]){
-                    for(var k=heightonscreen|0;k<hiddeny[i];k++){
+                    var colBottom = renderOpts.groundFloor
+                        ? Math.min(hiddeny[i], (heightonscreen|0) + Math.floor(sh * 0.2))
+                        : hiddeny[i];
+                    // Clamp to screen bounds to prevent giant loops when deep underground
+                    var drawTop = Math.max(0, heightonscreen|0);
+                    var drawBot = Math.min(sh, colBottom);
+                    for(var k=drawTop;k<drawBot;k++){
                         var idx=k*sw+i;
                         if(z<depth[idx]){
                             screendata.buf32[idx]=finalColor;
                             depth[idx]=z;
+                        }
+                    }
+                    // groundFloor: hard-block the gap so no item (any z) can render there
+                    if(renderOpts.groundFloor && colBottom<hiddeny[i]){
+                        var blockStart = Math.max(0, colBottom);
+                        var blockEnd   = Math.min(sh, hiddeny[i]);
+                        for(var k=blockStart;k<blockEnd;k++){
+                            depth[k*sw+i] = 1;  // min z — items at z>=1 never pass z<1
                         }
                     }
                     hiddeny[i]=heightonscreen;
@@ -689,13 +706,30 @@ function Render_Cached(){
                     currentColors[i] = terrainData.color;
                 }
 
+                // Distance LOD — flatten color in far 10% of draw distance
+                if(typeof lodApply === 'function') finalColor = lodApply(finalColor, finalHeight, z);
+
                 var heightonscreen=(camera.height-finalHeight)*invz+camera.horizon;
                 if(heightonscreen<hiddeny[i]){
-                    for(var k=heightonscreen|0;k<hiddeny[i];k++){
+                    var colBottom = renderOpts.groundFloor
+                        ? Math.min(hiddeny[i], (heightonscreen|0) + Math.floor(sh * 0.2))
+                        : hiddeny[i];
+                    // Clamp to screen bounds to prevent giant loops when deep underground
+                    var drawTop = Math.max(0, heightonscreen|0);
+                    var drawBot = Math.min(sh, colBottom);
+                    for(var k=drawTop;k<drawBot;k++){
                         var idx=k*sw+i;
                         if(z<depth[idx]){
                             screendata.buf32[idx]=finalColor;
                             depth[idx]=z;
+                        }
+                    }
+                    // groundFloor: hard-block the gap so no item (any z) can render there
+                    if(renderOpts.groundFloor && colBottom<hiddeny[i]){
+                        var blockStart = Math.max(0, colBottom);
+                        var blockEnd   = Math.min(sh, hiddeny[i]);
+                        for(var k=blockStart;k<blockEnd;k++){
+                            depth[k*sw+i] = 1;  // min z — items at z>=1 never pass z<1
                         }
                     }
                     hiddeny[i]=heightonscreen;

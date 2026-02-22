@@ -183,8 +183,9 @@ var renderOpts = {
     bilinearFilter: true,   // 2 key - Bilinear texture filtering
     depthInterp: true,      // 3 key - Depth interpolation
     tileBlending: true,     // 4 key - Tile overlap blending
+    groundFloor: false,     // G key - Cap terrain draw at 75% screen height (no infinite wall)
     minimapVisible: true,   // M key - Minimap visibility
-    renderMode: 'tiled'  // 6 key - Cycle render modes: 'subdivided', 'tiled', 'cached', 'direct'
+    renderMode: 'tiled'     // 6 key - Cycle render modes: 'subdivided', 'tiled', 'cached', 'direct'
 };
 
 // Hidden Y buffer for terrain rendering

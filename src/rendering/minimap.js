@@ -44,7 +44,9 @@ var BIOME_COLORS = [
     'rgb(78,126,46)',          // 2: PLAINS — meadow green
     'rgb(58,88,36)',           // 3: HILLS  — dark forest green
     'rgb(112,108,118)',        // 4: MOUNTAIN — cool grey
-    'rgb(145,151,76)'          // 5: TRANSITION — sandy-green blend
+    'rgb(145,151,76)',         // 5: TRANSITION — sandy-green blend
+    'rgb(235,232,245)',        // 6: RIDGE — near-white/snow (very tall)
+    'rgb(110,90,58)'           // 7: FOOTHILL — earthy brown ramp
 ];
 var BIOME_BORDER_COLOR = 'rgb(70,68,80)';  // outer mountain wall (darker grey)
 
