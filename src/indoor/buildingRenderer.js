@@ -360,18 +360,25 @@ function getBuildingCollision(x, y) {
 
 // Called from camera.js UpdateCamera — returns lowest ceiling height
 // above the player, or Infinity if not inside any building.
+// Only fires when the player is already BELOW the roof (inside the
+// building).  If the player is above the roof (flew over it), the
+// ceiling is not applied so they land on top rather than being
+// teleported inside.
 function getBuildingCeiling(x, y) {
     var lowest = Infinity;
     for (var i = 0; i < buildingColliders.length; i++) {
-        var cfg = buildingColliders[i];
-        var hw  = cfg.width / 2;
-        var hd  = cfg.depth / 2;
+        var cfg   = buildingColliders[i];
+        var hw    = cfg.width / 2;
+        var hd    = cfg.depth / 2;
         if (x > cfg.x - hw && x < cfg.x + hw &&
             y > cfg.y - hd && y < cfg.y + hd) {
-            var baseZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72);
-            // Ceiling height is where the player's camera would hit the roof
-            var ceilH = baseZ + cfg.wallHeight - playerHeightOffset;
-            if (ceilH < lowest) lowest = ceilH;
+            var topZ  = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
+            // Only clamp if player is inside (eyes below roof level).
+            // If camera.height > topZ they are above the building — leave them alone.
+            if (camera.height <= topZ) {
+                var ceilH = topZ - playerHeightOffset;
+                if (ceilH < lowest) lowest = ceilH;
+            }
         }
     }
     return lowest;
