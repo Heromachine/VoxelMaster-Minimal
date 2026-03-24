@@ -43,6 +43,7 @@ function Draw(timestamp) {
         UpdateCamera();
         DrawBackground();
         RenderCube();
+        if (typeof RenderBuilding === 'function') RenderBuilding();
         Render();
         RenderItems();
         RenderMinimap();
@@ -72,6 +73,7 @@ function Init() {
     OnResizeWindow();
     InitMinimap();
     loadCubeTexture();
+    if (typeof initBuilding === 'function') initBuilding();
 
     // Load tree texture
     textures.tree = new Image();

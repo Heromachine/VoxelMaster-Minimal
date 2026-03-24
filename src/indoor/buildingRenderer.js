@@ -1,0 +1,303 @@
+// =====================================================
+// Building Renderer
+// A GZDoom-style structure placed in the voxel world.
+//
+// Self-contained module — remove both <script> tags
+// for src/indoor/ in index.html to disable entirely.
+// No existing files are modified except the two small
+// hook lines in main.js and camera.js (guarded so they
+// degrade gracefully if this file is absent).
+// =====================================================
+"use strict";
+
+// Texture objects for wall and ceiling surfaces
+var buildingTextures = {
+    wall:    { data: null, width: 0, height: 0, loaded: false },
+    ceiling: { data: null, width: 0, height: 0, loaded: false }
+};
+
+// ---- Texture loading ----
+
+function _loadBuildingTex(key, src) {
+    var img = new Image();
+    img.onload = function() {
+        var c   = document.createElement('canvas');
+        c.width  = img.width;
+        c.height = img.height;
+        var ctx  = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        var id = ctx.getImageData(0, 0, img.width, img.height);
+        buildingTextures[key].data   = id.data;
+        buildingTextures[key].width  = img.width;
+        buildingTextures[key].height = img.height;
+        buildingTextures[key].loaded = true;
+        console.log('[building] loaded', key, img.width + 'x' + img.height);
+    };
+    img.onerror = function() {
+        console.warn('[building] failed to load texture:', src);
+    };
+    img.src = src;
+}
+
+// Called once from Init() in main.js
+function initBuilding() {
+    if (!buildingConfig || !buildingConfig.enabled) return;
+    _loadBuildingTex('wall',    buildingConfig.wallTexture);
+    _loadBuildingTex('ceiling', buildingConfig.ceilingTexture);
+}
+
+// ---- Texture sampling ----
+
+function _sampleBuildingTex(tex, u, v) {
+    if (!tex.loaded) return 0xFF888888;   // grey fallback while loading
+    // Wrap to [0, 1)
+    u = u - Math.floor(u);
+    v = v - Math.floor(v);
+    var tx = Math.min(tex.width  - 1, Math.floor(u * tex.width));
+    var ty = Math.min(tex.height - 1, Math.floor(v * tex.height));
+    var i  = (ty * tex.width + tx) * 4;
+    var r = tex.data[i], g = tex.data[i+1], b = tex.data[i+2];
+    // Return ABGR (little-endian Uint32 format used by the engine)
+    return 0xFF000000 | (b << 16) | (g << 8) | r;
+}
+
+// ---- Triangle rasteriser ----
+// Identical to drawTexturedTriangle in cubeRenderer.js but takes an
+// explicit texture object so we can use different textures per face.
+
+function _drawBuildingTri(p0, p1, p2, shade, tex) {
+    var sw  = screendata.canvas.width,
+        sh  = screendata.canvas.height,
+        buf = screendata.buf32,
+        dep = screendata.depthBuffer;
+
+    var mnX = Math.max(0,    Math.floor(Math.min(p0.x, p1.x, p2.x)));
+    var mxX = Math.min(sw-1, Math.ceil (Math.max(p0.x, p1.x, p2.x)));
+    var mnY = Math.max(0,    Math.floor(Math.min(p0.y, p1.y, p2.y)));
+    var mxY = Math.min(sh-1, Math.ceil (Math.max(p0.y, p1.y, p2.y)));
+    if (mnX > mxX || mnY > mxY) return;
+
+    // edgeFunction is global (defined in cubeRenderer.js)
+    var area = edgeFunction(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
+    if (Math.abs(area) < 0.001) return;
+    var inv = 1.0 / area;
+
+    var u0z = p0.u * p0.invZ, v0z = p0.v * p0.invZ;
+    var u1z = p1.u * p1.invZ, v1z = p1.v * p1.invZ;
+    var u2z = p2.u * p2.invZ, v2z = p2.v * p2.invZ;
+
+    for (var py = mnY; py <= mxY; py++) {
+        for (var px = mnX; px <= mxX; px++) {
+            var cx = px + 0.5, cy = py + 0.5;
+            var w0 = edgeFunction(p1.x, p1.y, p2.x, p2.y, cx, cy);
+            var w1 = edgeFunction(p2.x, p2.y, p0.x, p0.y, cx, cy);
+            var w2 = edgeFunction(p0.x, p0.y, p1.x, p1.y, cx, cy);
+            var ok = (area > 0) ? (w0 >= 0 && w1 >= 0 && w2 >= 0)
+                                : (w0 <= 0 && w1 <= 0 && w2 <= 0);
+            if (!ok) continue;
+
+            var b0 = w0 * inv, b1 = w1 * inv, b2 = w2 * inv;
+            var iZ = b0 * p0.invZ + b1 * p1.invZ + b2 * p2.invZ;
+            var pd = (1.0 / iZ) - 0.5;
+            var bi = py * sw + px;
+            if (pd >= dep[bi]) continue;   // depth test
+
+            var u  = (b0 * u0z + b1 * u1z + b2 * u2z) / iZ;
+            var v  = (b0 * v0z + b1 * v1z + b2 * v2z) / iZ;
+            var tc = _sampleBuildingTex(tex, u, v);
+
+            var r = Math.min(255, ((tc      ) & 0xFF) * shade | 0);
+            var g = Math.min(255, ((tc >>  8) & 0xFF) * shade | 0);
+            var b = Math.min(255, ((tc >> 16) & 0xFF) * shade | 0);
+            buf[bi] = 0xFF000000 | (b << 16) | (g << 8) | r;
+            dep[bi] = pd;
+        }
+    }
+}
+
+// ---- Quad helper ----
+// v0=bottom-left, v1=bottom-right, v2=top-right, v3=top-left (world space).
+// uRep / vRep control texture tiling counts.
+// projectPoint() is global (defined in cubeRenderer.js).
+
+function _drawBuildingQuad(v0, v1, v2, v3, shade, tex, uRep, vRep) {
+    var p0 = projectPoint(v0), p1 = projectPoint(v1);
+    var p2 = projectPoint(v2), p3 = projectPoint(v3);
+
+    // Skip if 2+ verts are behind camera (prevents giant distorted polys)
+    var bc = (p0.wasBehind?1:0) + (p1.wasBehind?1:0) +
+             (p2.wasBehind?1:0) + (p3.wasBehind?1:0);
+    if (bc >= 2) return;
+
+    p0.u = 0;    p0.v = vRep;
+    p1.u = uRep; p1.v = vRep;
+    p2.u = uRep; p2.v = 0;
+    p3.u = 0;    p3.v = 0;
+
+    _drawBuildingTri(p0, p1, p2, shade, tex);
+    _drawBuildingTri(p0, p2, p3, shade, tex);
+}
+
+// ---- Back-face culling helper ----
+
+function _bfaceVis(nx, ny, nz, cx, cy, cz) {
+    return (camera.x - cx) * nx +
+           (camera.y - cy) * ny +
+           (camera.height - cz) * nz > 0;
+}
+
+// =====================================================
+// RenderBuilding — called each frame from main.js
+// =====================================================
+function RenderBuilding() {
+    if (!buildingConfig || !buildingConfig.enabled) return;
+
+    // Keep shared trig values current (cubeRenderer sets these too;
+    // we set them here so RenderBuilding is order-independent)
+    cubeSinYaw = Math.sin(camera.angle);
+    cubeCosYaw = Math.cos(camera.angle);
+
+    var cfg = buildingConfig;
+    var hw  = cfg.width      / 2;   // half width  (X)
+    var hd  = cfg.depth      / 2;   // half depth  (Y)
+    var dw  = cfg.doorWidth  / 2;   // half door width
+    var dh  = cfg.doorHeight;       // door height above base
+
+    // Terrain height at building centre — base of all walls
+    var baseZ = getRawTerrainHeight(cfg.x, cfg.y) || 72;
+    var topZ  = baseZ + cfg.wallHeight;
+    var midZ  = (baseZ + topZ) * 0.5;
+
+    // Broad frustum reject: building is clearly behind the camera
+    var fdx = cfg.x - camera.x, fdy = cfg.y - camera.y;
+    var fwd = -fdx * cubeSinYaw - fdy * cubeCosYaw;
+    if (fwd < -(Math.max(hw, hd) + 300)) return;
+
+    var wTex = buildingTextures.wall;
+    var cTex = buildingTextures.ceiling;
+
+    // Corner world positions (Y convention: -Y is forward from spawn)
+    var nwX = cfg.x - hw,  nwY = cfg.y - hd;   // north-west
+    var neX = cfg.x + hw,  neY = cfg.y - hd;   // north-east
+    var seX = cfg.x + hw,  seY = cfg.y + hd;   // south-east
+    var swX = cfg.x - hw,  swY = cfg.y + hd;   // south-west
+
+    // Texture tiling: number of horizontal repeats = wall length / wall height
+    var rH = cfg.width  / cfg.wallHeight;   // repeat for N/S walls
+    var rV = cfg.depth  / cfg.wallHeight;   // repeat for E/W walls
+
+    // ---- North wall (normal 0,-1,0) — seen from north ----
+    if (_bfaceVis(0, -1, 0,  cfg.x, cfg.y - hd, midZ)) {
+        _drawBuildingQuad(
+            {x: nwX, y: nwY, z: baseZ},
+            {x: neX, y: neY, z: baseZ},
+            {x: neX, y: neY, z: topZ },
+            {x: nwX, y: nwY, z: topZ },
+            0.60, wTex, rH, 1
+        );
+    }
+
+    // ---- East wall (normal 1,0,0) ----
+    if (_bfaceVis(1, 0, 0,  cfg.x + hw, cfg.y, midZ)) {
+        _drawBuildingQuad(
+            {x: neX, y: neY, z: baseZ},
+            {x: seX, y: seY, z: baseZ},
+            {x: seX, y: seY, z: topZ },
+            {x: neX, y: neY, z: topZ },
+            0.78, wTex, rV, 1
+        );
+    }
+
+    // ---- West wall (normal -1,0,0) ----
+    if (_bfaceVis(-1, 0, 0,  cfg.x - hw, cfg.y, midZ)) {
+        _drawBuildingQuad(
+            {x: swX, y: swY, z: baseZ},
+            {x: nwX, y: nwY, z: baseZ},
+            {x: nwX, y: nwY, z: topZ },
+            {x: swX, y: swY, z: topZ },
+            0.78, wTex, rV, 1
+        );
+    }
+
+    // ---- South wall with door (normal 0,1,0) — faces spawn ----
+    if (_bfaceVis(0, 1, 0,  cfg.x, cfg.y + hd, midZ)) {
+
+        // Left section (west side of door)
+        var lW = (hw - dw) / cfg.wallHeight;
+        _drawBuildingQuad(
+            {x: swX,         y: seY, z: baseZ},
+            {x: cfg.x - dw,  y: seY, z: baseZ},
+            {x: cfg.x - dw,  y: seY, z: topZ },
+            {x: swX,         y: seY, z: topZ },
+            1.0, wTex, lW, 1
+        );
+
+        // Right section (east side of door)
+        _drawBuildingQuad(
+            {x: cfg.x + dw,  y: seY, z: baseZ},
+            {x: seX,         y: seY, z: baseZ},
+            {x: seX,         y: seY, z: topZ },
+            {x: cfg.x + dw,  y: seY, z: topZ },
+            1.0, wTex, lW, 1
+        );
+
+        // Header above door
+        var headerH = cfg.wallHeight - dh;
+        _drawBuildingQuad(
+            {x: swX + (hw - dw),  y: seY, z: baseZ + dh},
+            {x: swX + (hw + dw),  y: seY, z: baseZ + dh},
+            {x: swX + (hw + dw),  y: seY, z: topZ       },
+            {x: swX + (hw - dw),  y: seY, z: topZ       },
+            1.0, wTex,
+            cfg.doorWidth  / cfg.wallHeight,
+            headerH        / cfg.wallHeight
+        );
+    }
+
+    // ---- Roof — visible when camera is below roof level ----
+    if (camera.height < topZ + 20) {
+        var rU = cfg.width / 64, rV2 = cfg.depth / 64;
+        _drawBuildingQuad(
+            {x: swX, y: swY, z: topZ},
+            {x: seX, y: seY, z: topZ},
+            {x: neX, y: neY, z: topZ},
+            {x: nwX, y: nwY, z: topZ},
+            0.85, cTex, rU, rV2
+        );
+    }
+}
+
+// =====================================================
+// getBuildingCollision — called from camera.js
+// Returns true if position (x, y) collides with a wall.
+// Allows passage through the south door gap.
+// =====================================================
+function getBuildingCollision(x, y) {
+    if (!buildingConfig || !buildingConfig.enabled) return false;
+
+    var cfg = buildingConfig;
+    var hw  = cfg.width  / 2;
+    var hd  = cfg.depth  / 2;
+    var dw  = cfg.doorWidth / 2;
+    var r   = PLAYER_RADIUS;   // global from camera.js
+
+    // Broad reject: clearly outside building bounding box
+    if (x < cfg.x - hw - r || x > cfg.x + hw + r) return false;
+    if (y < cfg.y - hd - r || y > cfg.y + hd + r) return false;
+
+    // Fully inside interior: no wall contact
+    if (x > cfg.x - hw + r && x < cfg.x + hw - r &&
+        y > cfg.y - hd + r && y < cfg.y + hd - r) {
+        return false;
+    }
+
+    // South wall — check door gap
+    if (y > cfg.y + hd - r) {
+        var inDoorX  = Math.abs(x - cfg.x) < dw - r;
+        var feetZ    = camera.height - playerHeightOffset;
+        var doorTopZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.doorHeight;
+        if (inDoorX && feetZ < doorTopZ) return false;  // walk through
+    }
+
+    return true;   // collision
+}

@@ -96,6 +96,9 @@ var canMoveTo = (nx, ny) => {
     var playerZ = camera.height;
     if (collidesWithCube(nx, ny, playerZ)) return false;
 
+    // Building wall collision (optional module — degrades gracefully if absent)
+    if (typeof getBuildingCollision === 'function' && getBuildingCollision(nx, ny)) return false;
+
     // Slope checking (only when on ground)
     if (!isOnGround()) return true;
     var curH = getGroundHeight(camera.x, camera.y), newH = getGroundHeight(nx, ny);
