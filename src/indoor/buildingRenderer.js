@@ -115,27 +115,75 @@ function _drawBuildingTri(p0, p1, p2, shade, tex) {
     }
 }
 
+// ---- Near-plane clipper ----
+// Clips a polygon (array of {x,y,z,u,v}) against the camera near plane
+// using Sutherland-Hodgman, then projects and rasterises each triangle.
+// This prevents walls from disappearing when close corners go behind
+// the camera — instead we get a correctly clipped visible portion.
+
+var _BUILDING_NEAR = 2.0;   // clip plane distance (world units)
+
+function _clipAndDraw(verts, shade, tex) {
+    var NEAR = _BUILDING_NEAR;
+    var out  = [];
+    var n    = verts.length;
+
+    for (var i = 0; i < n; i++) {
+        var a  = verts[i];
+        var b  = verts[(i + 1) % n];
+        // Forward (depth) of each vertex from the camera
+        var fa = -(a.x - camera.x) * cubeSinYaw - (a.y - camera.y) * cubeCosYaw;
+        var fb = -(b.x - camera.x) * cubeSinYaw - (b.y - camera.y) * cubeCosYaw;
+        var aIn = fa >= NEAR;
+        var bIn = fb >= NEAR;
+
+        if (aIn) out.push(a);
+
+        // Edge crosses the near plane — interpolate a new vertex
+        if (aIn !== bIn) {
+            var t = (NEAR - fa) / (fb - fa);
+            out.push({
+                x: a.x + t * (b.x - a.x),
+                y: a.y + t * (b.y - a.y),
+                z: a.z + t * (b.z - a.z),
+                u: a.u + t * (b.u - a.u),
+                v: a.v + t * (b.v - a.v)
+            });
+        }
+    }
+
+    if (out.length < 3) return;   // entirely behind near plane
+
+    // Project the clipped polygon vertices (all are now in front of near plane)
+    var proj = [];
+    for (var i = 0; i < out.length; i++) {
+        var p = projectPoint(out[i]);
+        p.u = out[i].u;
+        p.v = out[i].v;
+        proj.push(p);
+    }
+
+    // Triangle fan from first vertex
+    for (var i = 1; i < proj.length - 1; i++) {
+        _drawBuildingTri(proj[0], proj[i], proj[i + 1], shade, tex);
+    }
+}
+
 // ---- Quad helper ----
 // v0=bottom-left, v1=bottom-right, v2=top-right, v3=top-left (world space).
 // uRep / vRep control texture tiling counts.
-// projectPoint() is global (defined in cubeRenderer.js).
 
 function _drawBuildingQuad(v0, v1, v2, v3, shade, tex, uRep, vRep) {
-    var p0 = projectPoint(v0), p1 = projectPoint(v1);
-    var p2 = projectPoint(v2), p3 = projectPoint(v3);
-
-    // Skip if 2+ verts are behind camera (prevents giant distorted polys)
-    var bc = (p0.wasBehind?1:0) + (p1.wasBehind?1:0) +
-             (p2.wasBehind?1:0) + (p3.wasBehind?1:0);
-    if (bc >= 2) return;
-
-    p0.u = 0;    p0.v = vRep;
-    p1.u = uRep; p1.v = vRep;
-    p2.u = uRep; p2.v = 0;
-    p3.u = 0;    p3.v = 0;
-
-    _drawBuildingTri(p0, p1, p2, shade, tex);
-    _drawBuildingTri(p0, p2, p3, shade, tex);
+    uRep = uRep || 1;
+    vRep = vRep || 1;
+    // Attach UV coordinates to world-space vertices before clipping
+    // so they get correctly interpolated at the near-plane intersection.
+    _clipAndDraw([
+        {x: v0.x, y: v0.y, z: v0.z, u: 0,    v: vRep},
+        {x: v1.x, y: v1.y, z: v1.z, u: uRep, v: vRep},
+        {x: v2.x, y: v2.y, z: v2.z, u: uRep, v: 0   },
+        {x: v3.x, y: v3.y, z: v3.z, u: 0,    v: 0   }
+    ], shade, tex);
 }
 
 // =====================================================
