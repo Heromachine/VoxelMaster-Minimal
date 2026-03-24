@@ -7,6 +7,11 @@
 var MAX_SLOPE = 2;
 var PLAYER_RADIUS = 10;
 var PUSH_OUT_BUFFER = 5;
+
+// Shared with buildingRenderer.js so getBuildingRoofGround can tell whether
+// the player was above the roof last frame (prevents inside-ceiling-touch
+// from triggering the roof snap).
+var _cameraHeightPrev = 0;
 var isOnGround = () => camera.height <= getGroundHeight(camera.x, camera.y) + 0.1;
 
 // Check if position collides with the cube (AABB collision)
@@ -187,6 +192,8 @@ function UpdateCamera() {
     }
 
     // Gravity
+    var prevHeight = camera.height;  // snapshot before physics step (tunneling fix)
+    _cameraHeightPrev = prevHeight;  // expose to getBuildingRoofGround
     camera.velocityY -= 0.5 * deltaTime;
     camera.height += camera.velocityY * deltaTime;
 
@@ -198,8 +205,10 @@ function UpdateCamera() {
     }
 
     // Ceiling clamping (building interiors — optional module)
+    // Pass prevHeight so the ceiling check uses pre-frame position to determine
+    // inside/outside — prevents fast upward jumps from tunneling through the roof.
     if (typeof getBuildingCeiling === 'function') {
-        var ceilH = getBuildingCeiling(camera.x, camera.y);
+        var ceilH = getBuildingCeiling(camera.x, camera.y, prevHeight);
         if (camera.height > ceilH) {
             camera.height = ceilH;
             if (camera.velocityY > 0) camera.velocityY = 0;

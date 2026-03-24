@@ -464,6 +464,11 @@ function getGroundHeight(x, y) {
         terrainHeight = Math.max(terrainHeight, getBuildingRoofGround(x, y));
     }
 
+    // Building floor surfaces — raises ground to the floor quad when inside
+    if (typeof getBuildingFloorGround === 'function') {
+        terrainHeight = Math.max(terrainHeight, getBuildingFloorGround(x, y));
+    }
+
     return terrainHeight;
 }
 

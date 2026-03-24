@@ -13,7 +13,8 @@
 // Texture objects for wall and ceiling surfaces
 var buildingTextures = {
     wall:    { data: null, width: 0, height: 0, loaded: false },
-    ceiling: { data: null, width: 0, height: 0, loaded: false }
+    ceiling: { data: null, width: 0, height: 0, loaded: false },
+    floor:   { data: null, width: 0, height: 0, loaded: false }
 };
 
 // ---- Texture loading ----
@@ -44,6 +45,7 @@ function initBuilding() {
     if (!buildingConfig || !buildingConfig.enabled) return;
     _loadBuildingTex('wall',    buildingConfig.wallTexture);
     _loadBuildingTex('ceiling', buildingConfig.ceilingTexture);
+    _loadBuildingTex('floor',   buildingConfig.floorTexture);
     registerBuildingCollider(buildingConfig);
 }
 
@@ -193,111 +195,154 @@ function _drawBuildingQuad(v0, v1, v2, v3, shade, tex, uRep, vRep) {
 function RenderBuilding() {
     if (!buildingConfig || !buildingConfig.enabled) return;
 
-    // Keep shared trig values current (cubeRenderer sets these too;
-    // we set them here so RenderBuilding is order-independent)
+    // Keep shared trig values current
     cubeSinYaw = Math.sin(camera.angle);
     cubeCosYaw = Math.cos(camera.angle);
 
-    var cfg = buildingConfig;
-    var hw  = cfg.width      / 2;   // half width  (X)
-    var hd  = cfg.depth      / 2;   // half depth  (Y)
-    var dw  = cfg.doorWidth  / 2;   // half door width
-    var dh  = cfg.doorHeight;       // door height above base
+    var cfg   = buildingConfig;
+    var hw    = cfg.width  / 2;
+    var hd    = cfg.depth  / 2;
+    var wH    = cfg.wallHeight;
+    var dH    = cfg.doorHeight;
+    var dW    = cfg.doorWidth;
+    var dOff  = cfg.doorOffsetX || 0;
 
-    // Terrain height at building centre — base of all walls
+    // Outer bounds
+    var ox1 = cfg.x - hw,  ox2 = cfg.x + hw;   // west / east
+    var oy1 = cfg.y - hd,  oy2 = cfg.y + hd;   // north / south
+
     var baseZ = getRawTerrainHeight(cfg.x, cfg.y) || 72;
-    var topZ  = baseZ + cfg.wallHeight;
+    var topZ  = baseZ + wH;
 
-    // Broad frustum reject: building is clearly behind the camera
+    // Broad frustum reject
     var fdx = cfg.x - camera.x, fdy = cfg.y - camera.y;
     var fwd = -fdx * cubeSinYaw - fdy * cubeCosYaw;
     if (fwd < -(Math.max(hw, hd) + 300)) return;
 
     var wTex = buildingTextures.wall;
     var cTex = buildingTextures.ceiling;
+    var fTex = buildingTextures.floor;
 
-    // Corner world positions (Y convention: -Y is forward from spawn)
-    var nwX = cfg.x - hw,  nwY = cfg.y - hd;   // north-west
-    var neX = cfg.x + hw,  neY = cfg.y - hd;   // north-east
-    var seX = cfg.x + hw,  seY = cfg.y + hd;   // south-east
-    var swX = cfg.x - hw,  swY = cfg.y + hd;   // south-west
+    // ------------------------------------------------------------------
+    // Helpers: draw a solid horizontal or vertical wall segment, and a
+    // header (partial-height quad above a door gap).
+    // All walls are two-sided — the rasteriser's winding-order check
+    // handles both interior and exterior views.
+    // ------------------------------------------------------------------
 
-    // Texture tiling: number of horizontal repeats = wall length / wall height
-    var rH = cfg.width  / cfg.wallHeight;   // repeat for N/S walls
-    var rV = cfg.depth  / cfg.wallHeight;   // repeat for E/W walls
+    function hWall(wy, ax, bx, shade) {
+        var len = bx - ax;
+        if (len <= 0) return;
+        _drawBuildingQuad(
+            {x: ax, y: wy, z: baseZ}, {x: bx, y: wy, z: baseZ},
+            {x: bx, y: wy, z: topZ }, {x: ax, y: wy, z: topZ },
+            shade, wTex, len / wH, 1
+        );
+    }
+    function hHeader(wy, ax, bx, fromZ, shade) {
+        var len = bx - ax, hh = topZ - fromZ;
+        if (len <= 0 || hh <= 0) return;
+        _drawBuildingQuad(
+            {x: ax, y: wy, z: fromZ}, {x: bx, y: wy, z: fromZ},
+            {x: bx, y: wy, z: topZ }, {x: ax, y: wy, z: topZ },
+            shade, wTex, len / wH, hh / wH
+        );
+    }
+    function vWall(wx, ay, by, shade) {
+        var len = by - ay;
+        if (len <= 0) return;
+        _drawBuildingQuad(
+            {x: wx, y: ay, z: baseZ}, {x: wx, y: by, z: baseZ},
+            {x: wx, y: by, z: topZ }, {x: wx, y: ay, z: topZ },
+            shade, wTex, len / wH, 1
+        );
+    }
+    function vHeader(wx, ay, by, fromZ, shade) {
+        var len = by - ay, hh = topZ - fromZ;
+        if (len <= 0 || hh <= 0) return;
+        _drawBuildingQuad(
+            {x: wx, y: ay, z: fromZ}, {x: wx, y: by, z: fromZ},
+            {x: wx, y: by, z: topZ }, {x: wx, y: ay, z: topZ },
+            shade, wTex, len / wH, hh / wH
+        );
+    }
 
-    // Walls are two-sided: the rasteriser handles both winding orientations
-    // via the (area > 0) sign check, so each quad is visible from either
-    // side.  The depth buffer keeps exterior/interior correctly sorted.
-    // _bfaceVis is intentionally not used here.
+    // ------------------------------------------------------------------
+    // Outer walls
+    // ------------------------------------------------------------------
 
-    // ---- North wall ----
+    // North wall (no door)
+    hWall(oy1, ox1, ox2, 0.65);
+
+    // East wall (no door)
+    vWall(ox2, oy1, oy2, 0.80);
+
+    // West wall (no door)
+    vWall(ox1, oy1, oy2, 0.80);
+
+    // South wall — entry door offset from centre
+    var dCX = cfg.x + dOff;
+    var dl  = dCX - dW / 2,  dr = dCX + dW / 2;
+    hWall  (oy2, ox1, dl, 1.0);
+    hWall  (oy2, dr,  ox2, 1.0);
+    hHeader(oy2, dl,  dr,  baseZ + dH, 1.0);
+
+    // ------------------------------------------------------------------
+    // Interior walls (from buildingConfig.interiorWalls array)
+    // ------------------------------------------------------------------
+
+    var iWalls = cfg.interiorWalls;
+    if (iWalls) {
+        for (var i = 0; i < iWalls.length; i++) {
+            var w     = iWalls[i];
+            var shade = 0.75;
+            var cur, j, g, gH;
+
+            if (w.type === 'h') {
+                // Horizontal interior wall at w.y, spanning x = [w.x1 … w.x2]
+                cur = w.x1;
+                for (j = 0; j < w.gaps.length; j++) {
+                    g  = w.gaps[j];
+                    gH = g.height || dH;
+                    hWall  (w.y, cur,  g.x1, shade);
+                    hHeader(w.y, g.x1, g.x2, baseZ + gH, shade);
+                    cur = g.x2;
+                }
+                hWall(w.y, cur, w.x2, shade);
+
+            } else if (w.type === 'v') {
+                // Vertical interior wall at w.x, spanning y = [w.y1 … w.y2]
+                cur = w.y1;
+                for (j = 0; j < w.gaps.length; j++) {
+                    g  = w.gaps[j];
+                    gH = g.height || dH;
+                    vWall  (w.x, cur,  g.y1, shade);
+                    vHeader(w.x, g.y1, g.y2, baseZ + gH, shade);
+                    cur = g.y2;
+                }
+                vWall(w.x, cur, w.y2, shade);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Floor and ceiling / roof
+    // ------------------------------------------------------------------
+
+    var rU  = cfg.width  / 64;
+    var rV2 = cfg.depth  / 64;
+
+    // Floor at baseZ (winding: seen from above)
     _drawBuildingQuad(
-        {x: nwX, y: nwY, z: baseZ},
-        {x: neX, y: neY, z: baseZ},
-        {x: neX, y: neY, z: topZ },
-        {x: nwX, y: nwY, z: topZ },
-        0.65, wTex, rH, 1
+        {x: ox1, y: oy1, z: baseZ}, {x: ox2, y: oy1, z: baseZ},
+        {x: ox2, y: oy2, z: baseZ}, {x: ox1, y: oy2, z: baseZ},
+        0.90, fTex, rU, rV2
     );
 
-    // ---- East wall ----
+    // Roof at topZ (two-sided — near-plane clipper handles interior view)
     _drawBuildingQuad(
-        {x: neX, y: neY, z: baseZ},
-        {x: seX, y: seY, z: baseZ},
-        {x: seX, y: seY, z: topZ },
-        {x: neX, y: neY, z: topZ },
-        0.80, wTex, rV, 1
-    );
-
-    // ---- West wall ----
-    _drawBuildingQuad(
-        {x: swX, y: swY, z: baseZ},
-        {x: nwX, y: nwY, z: baseZ},
-        {x: nwX, y: nwY, z: topZ },
-        {x: swX, y: swY, z: topZ },
-        0.80, wTex, rV, 1
-    );
-
-    // ---- South wall with door ----
-    var lW = (hw - dw) / cfg.wallHeight;
-
-    // Left section (west side of door)
-    _drawBuildingQuad(
-        {x: swX,         y: seY, z: baseZ},
-        {x: cfg.x - dw,  y: seY, z: baseZ},
-        {x: cfg.x - dw,  y: seY, z: topZ },
-        {x: swX,         y: seY, z: topZ },
-        1.0, wTex, lW, 1
-    );
-
-    // Right section (east side of door)
-    _drawBuildingQuad(
-        {x: cfg.x + dw,  y: seY, z: baseZ},
-        {x: seX,         y: seY, z: baseZ},
-        {x: seX,         y: seY, z: topZ },
-        {x: cfg.x + dw,  y: seY, z: topZ },
-        1.0, wTex, lW, 1
-    );
-
-    // Header above door
-    var headerH = cfg.wallHeight - dh;
-    _drawBuildingQuad(
-        {x: swX + (hw - dw),  y: seY, z: baseZ + dh},
-        {x: swX + (hw + dw),  y: seY, z: baseZ + dh},
-        {x: swX + (hw + dw),  y: seY, z: topZ       },
-        {x: swX + (hw - dw),  y: seY, z: topZ       },
-        1.0, wTex,
-        cfg.doorWidth  / cfg.wallHeight,
-        headerH        / cfg.wallHeight
-    );
-
-    // ---- Roof (two-sided — near-plane clipper decides visibility) ----
-    var rU = cfg.width / 64, rV2 = cfg.depth / 64;
-    _drawBuildingQuad(
-        {x: swX, y: swY, z: topZ},
-        {x: seX, y: seY, z: topZ},
-        {x: neX, y: neY, z: topZ},
-        {x: nwX, y: nwY, z: topZ},
+        {x: ox1, y: oy2, z: topZ}, {x: ox2, y: oy2, z: topZ},
+        {x: ox2, y: oy1, z: topZ}, {x: ox1, y: oy1, z: topZ},
         0.85, cTex, rU, rV2
     );
 }
@@ -324,40 +369,98 @@ function registerBuildingCollider(cfg) {
     buildingColliders.push(cfg);
 }
 
-// ---- Per-collider wall check ----
+// ---- Outer-shell wall check ----
 function _checkColliderWall(cfg, x, y) {
-    var hw = cfg.width      / 2;
-    var hd = cfg.depth      / 2;
-    var dw = (cfg.doorWidth || 0) / 2;
+    var hw = cfg.width  / 2;
+    var hd = cfg.depth  / 2;
     var r  = PLAYER_RADIUS;
 
     // Broad reject
     if (x < cfg.x - hw - r || x > cfg.x + hw + r) return false;
     if (y < cfg.y - hd - r || y > cfg.y + hd + r) return false;
 
-    // If player's feet are above the wall top they can pass over freely
+    // Height check: player's feet above wall top → can pass over
     var feetZ = camera.height - playerHeightOffset;
-    var topZ  = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
+    var baseZ = getRawTerrainHeight(cfg.x, cfg.y) || 72;
+    var topZ  = baseZ + cfg.wallHeight;
     if (feetZ >= topZ) return false;
 
     // Fully inside interior — no wall contact
     if (x > cfg.x - hw + r && x < cfg.x + hw - r &&
         y > cfg.y - hd + r && y < cfg.y + hd - r) return false;
 
-    // South wall door gap (only if config defines a door)
+    // South wall entry door gap (offset from centre by doorOffsetX)
+    var dw = (cfg.doorWidth || 0) / 2;
     if (dw > 0 && y > cfg.y + hd - r) {
-        var inDoorX  = Math.abs(x - cfg.x) < dw - r;
-        var doorTopZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.doorHeight;
+        var doorCX   = cfg.x + (cfg.doorOffsetX || 0);
+        var inDoorX  = Math.abs(x - doorCX) < dw - r;
+        var doorTopZ = baseZ + cfg.doorHeight;
         if (inDoorX && feetZ < doorTopZ) return false;
     }
 
     return true;
 }
 
+// ---- Interior wall segment check ----
+// Returns true if moving from (camera.x, camera.y) to (nx, ny) is blocked
+// by any interior wall defined in cfg.interiorWalls.
+function _checkInteriorWalls(cfg, nx, ny) {
+    if (!cfg.interiorWalls) return false;
+    var baseZ = getRawTerrainHeight(cfg.x, cfg.y) || 72;
+    var topZ  = baseZ + cfg.wallHeight;
+    var feetZ = camera.height - playerHeightOffset;
+    if (feetZ >= topZ) return false;   // can jump over all interior walls
+
+    for (var i = 0; i < cfg.interiorWalls.length; i++) {
+        var w = cfg.interiorWalls[i];
+
+        if (w.type === 'h') {
+            // Horizontal wall at w.y spanning x = [w.x1 … w.x2]
+            var oldSide = camera.y - w.y;
+            var newSide = ny       - w.y;
+            if (oldSide * newSide >= 0) continue;   // not crossing
+            if (nx < w.x1 || nx > w.x2) continue;  // outside wall extent
+
+            // Check each gap
+            var blocked = true;
+            for (var j = 0; j < w.gaps.length; j++) {
+                var g  = w.gaps[j];
+                var gH = g.height || cfg.doorHeight;
+                if (nx >= g.x1 && nx <= g.x2 && feetZ < baseZ + gH) {
+                    blocked = false;
+                    break;
+                }
+            }
+            if (blocked) return true;
+
+        } else if (w.type === 'v') {
+            // Vertical wall at w.x spanning y = [w.y1 … w.y2]
+            var oldSide = camera.x - w.x;
+            var newSide = nx       - w.x;
+            if (oldSide * newSide >= 0) continue;   // not crossing
+            if (ny < w.y1 || ny > w.y2) continue;  // outside wall extent
+
+            var blocked = true;
+            for (var j = 0; j < w.gaps.length; j++) {
+                var g  = w.gaps[j];
+                var gH = g.height || cfg.doorHeight;
+                if (ny >= g.y1 && ny <= g.y2 && feetZ < baseZ + gH) {
+                    blocked = false;
+                    break;
+                }
+            }
+            if (blocked) return true;
+        }
+    }
+    return false;
+}
+
 // Called from camera.js canMoveTo — returns true = blocked
 function getBuildingCollision(x, y) {
     for (var i = 0; i < buildingColliders.length; i++) {
-        if (_checkColliderWall(buildingColliders[i], x, y)) return true;
+        var cfg = buildingColliders[i];
+        if (_checkColliderWall(cfg, x, y))    return true;
+        if (_checkInteriorWalls(cfg, x, y))   return true;
     }
     return false;
 }
@@ -368,7 +471,12 @@ function getBuildingCollision(x, y) {
 // building).  If the player is above the roof (flew over it), the
 // ceiling is not applied so they land on top rather than being
 // teleported inside.
-function getBuildingCeiling(x, y) {
+function getBuildingCeiling(x, y, prevHeight) {
+    // prevHeight is the camera height from the PREVIOUS frame (before physics).
+    // Using it instead of camera.height prevents tunneling: a fast upward jump
+    // that moves the camera past topZ in one frame still reads as "inside"
+    // because prevHeight was still below the roof.
+    var checkH = (prevHeight !== undefined) ? prevHeight : camera.height;
     var lowest = Infinity;
     for (var i = 0; i < buildingColliders.length; i++) {
         var cfg   = buildingColliders[i];
@@ -377,9 +485,9 @@ function getBuildingCeiling(x, y) {
         if (x > cfg.x - hw && x < cfg.x + hw &&
             y > cfg.y - hd && y < cfg.y + hd) {
             var topZ  = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
-            // Only clamp if player is inside (eyes below roof level).
-            // If camera.height > topZ they are above the building — leave them alone.
-            if (camera.height <= topZ) {
+            // Only clamp if player was inside last frame (eyes below roof level).
+            // If checkH > topZ they were above the building — leave them alone.
+            if (checkH <= topZ) {
                 var ceilH = topZ - playerHeightOffset;
                 if (ceilH < lowest) lowest = ceilH;
             }
@@ -401,11 +509,36 @@ function getBuildingRoofGround(x, y) {
             y > cfg.y - hd && y < cfg.y + hd) {
             var topZ    = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
             var roofGnd = topZ + playerHeightOffset;
-            // Only support the player on the roof if they are at or above it.
-            // If they are inside (below topZ) this returns 0 and has no effect.
-            if (camera.height >= topZ - 1 && roofGnd > highest) {
+            // Only snap to roof if the player was above it last frame OR is
+            // currently above it.  This prevents a player touching the ceiling
+            // from inside (camera.height ≈ topZ - playerHeightOffset) from
+            // accidentally triggering the roof-ground snap and getting launched
+            // through the ceiling.
+            var wasAbove = (_cameraHeightPrev >= topZ);
+            var isAbove  = (camera.height    >= topZ);
+            if ((wasAbove || isAbove) && roofGnd > highest) {
                 highest = roofGnd;
             }
+        }
+    }
+    return highest;
+}
+
+// Called from voxelEngine.js getGroundHeight — raises the ground to the
+// building's floor quad height when the player is inside the footprint.
+// The floor quad is drawn at baseZ (terrain height at building centre).
+// Without this, terrain dips below the floor quad let the player sink through.
+function getBuildingFloorGround(x, y) {
+    var highest = 0;
+    for (var i = 0; i < buildingColliders.length; i++) {
+        var cfg = buildingColliders[i];
+        var hw  = cfg.width  / 2;
+        var hd  = cfg.depth  / 2;
+        if (x > cfg.x - hw && x < cfg.x + hw &&
+            y > cfg.y - hd && y < cfg.y + hd) {
+            var baseZ    = getRawTerrainHeight(cfg.x, cfg.y) || 72;
+            var floorGnd = baseZ + playerHeightOffset;
+            if (floorGnd > highest) highest = floorGnd;
         }
     }
     return highest;
