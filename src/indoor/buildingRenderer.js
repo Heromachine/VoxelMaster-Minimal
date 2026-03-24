@@ -138,14 +138,6 @@ function _drawBuildingQuad(v0, v1, v2, v3, shade, tex, uRep, vRep) {
     _drawBuildingTri(p0, p2, p3, shade, tex);
 }
 
-// ---- Back-face culling helper ----
-
-function _bfaceVis(nx, ny, nz, cx, cy, cz) {
-    return (camera.x - cx) * nx +
-           (camera.y - cy) * ny +
-           (camera.height - cz) * nz > 0;
-}
-
 // =====================================================
 // RenderBuilding — called each frame from main.js
 // =====================================================
@@ -166,7 +158,6 @@ function RenderBuilding() {
     // Terrain height at building centre — base of all walls
     var baseZ = getRawTerrainHeight(cfg.x, cfg.y) || 72;
     var topZ  = baseZ + cfg.wallHeight;
-    var midZ  = (baseZ + topZ) * 0.5;
 
     // Broad frustum reject: building is clearly behind the camera
     var fdx = cfg.x - camera.x, fdy = cfg.y - camera.y;
@@ -186,73 +177,70 @@ function RenderBuilding() {
     var rH = cfg.width  / cfg.wallHeight;   // repeat for N/S walls
     var rV = cfg.depth  / cfg.wallHeight;   // repeat for E/W walls
 
-    // ---- North wall (normal 0,-1,0) — seen from north ----
-    if (_bfaceVis(0, -1, 0,  cfg.x, cfg.y - hd, midZ)) {
-        _drawBuildingQuad(
-            {x: nwX, y: nwY, z: baseZ},
-            {x: neX, y: neY, z: baseZ},
-            {x: neX, y: neY, z: topZ },
-            {x: nwX, y: nwY, z: topZ },
-            0.60, wTex, rH, 1
-        );
-    }
+    // Walls are two-sided: the rasteriser handles both winding orientations
+    // via the (area > 0) sign check, so each quad is visible from either
+    // side.  The depth buffer keeps exterior/interior correctly sorted.
+    // _bfaceVis is intentionally not used here.
 
-    // ---- East wall (normal 1,0,0) ----
-    if (_bfaceVis(1, 0, 0,  cfg.x + hw, cfg.y, midZ)) {
-        _drawBuildingQuad(
-            {x: neX, y: neY, z: baseZ},
-            {x: seX, y: seY, z: baseZ},
-            {x: seX, y: seY, z: topZ },
-            {x: neX, y: neY, z: topZ },
-            0.78, wTex, rV, 1
-        );
-    }
+    // ---- North wall ----
+    _drawBuildingQuad(
+        {x: nwX, y: nwY, z: baseZ},
+        {x: neX, y: neY, z: baseZ},
+        {x: neX, y: neY, z: topZ },
+        {x: nwX, y: nwY, z: topZ },
+        0.65, wTex, rH, 1
+    );
 
-    // ---- West wall (normal -1,0,0) ----
-    if (_bfaceVis(-1, 0, 0,  cfg.x - hw, cfg.y, midZ)) {
-        _drawBuildingQuad(
-            {x: swX, y: swY, z: baseZ},
-            {x: nwX, y: nwY, z: baseZ},
-            {x: nwX, y: nwY, z: topZ },
-            {x: swX, y: swY, z: topZ },
-            0.78, wTex, rV, 1
-        );
-    }
+    // ---- East wall ----
+    _drawBuildingQuad(
+        {x: neX, y: neY, z: baseZ},
+        {x: seX, y: seY, z: baseZ},
+        {x: seX, y: seY, z: topZ },
+        {x: neX, y: neY, z: topZ },
+        0.80, wTex, rV, 1
+    );
 
-    // ---- South wall with door (normal 0,1,0) — faces spawn ----
-    if (_bfaceVis(0, 1, 0,  cfg.x, cfg.y + hd, midZ)) {
+    // ---- West wall ----
+    _drawBuildingQuad(
+        {x: swX, y: swY, z: baseZ},
+        {x: nwX, y: nwY, z: baseZ},
+        {x: nwX, y: nwY, z: topZ },
+        {x: swX, y: swY, z: topZ },
+        0.80, wTex, rV, 1
+    );
 
-        // Left section (west side of door)
-        var lW = (hw - dw) / cfg.wallHeight;
-        _drawBuildingQuad(
-            {x: swX,         y: seY, z: baseZ},
-            {x: cfg.x - dw,  y: seY, z: baseZ},
-            {x: cfg.x - dw,  y: seY, z: topZ },
-            {x: swX,         y: seY, z: topZ },
-            1.0, wTex, lW, 1
-        );
+    // ---- South wall with door ----
+    var lW = (hw - dw) / cfg.wallHeight;
 
-        // Right section (east side of door)
-        _drawBuildingQuad(
-            {x: cfg.x + dw,  y: seY, z: baseZ},
-            {x: seX,         y: seY, z: baseZ},
-            {x: seX,         y: seY, z: topZ },
-            {x: cfg.x + dw,  y: seY, z: topZ },
-            1.0, wTex, lW, 1
-        );
+    // Left section (west side of door)
+    _drawBuildingQuad(
+        {x: swX,         y: seY, z: baseZ},
+        {x: cfg.x - dw,  y: seY, z: baseZ},
+        {x: cfg.x - dw,  y: seY, z: topZ },
+        {x: swX,         y: seY, z: topZ },
+        1.0, wTex, lW, 1
+    );
 
-        // Header above door
-        var headerH = cfg.wallHeight - dh;
-        _drawBuildingQuad(
-            {x: swX + (hw - dw),  y: seY, z: baseZ + dh},
-            {x: swX + (hw + dw),  y: seY, z: baseZ + dh},
-            {x: swX + (hw + dw),  y: seY, z: topZ       },
-            {x: swX + (hw - dw),  y: seY, z: topZ       },
-            1.0, wTex,
-            cfg.doorWidth  / cfg.wallHeight,
-            headerH        / cfg.wallHeight
-        );
-    }
+    // Right section (east side of door)
+    _drawBuildingQuad(
+        {x: cfg.x + dw,  y: seY, z: baseZ},
+        {x: seX,         y: seY, z: baseZ},
+        {x: seX,         y: seY, z: topZ },
+        {x: cfg.x + dw,  y: seY, z: topZ },
+        1.0, wTex, lW, 1
+    );
+
+    // Header above door
+    var headerH = cfg.wallHeight - dh;
+    _drawBuildingQuad(
+        {x: swX + (hw - dw),  y: seY, z: baseZ + dh},
+        {x: swX + (hw + dw),  y: seY, z: baseZ + dh},
+        {x: swX + (hw + dw),  y: seY, z: topZ       },
+        {x: swX + (hw - dw),  y: seY, z: topZ       },
+        1.0, wTex,
+        cfg.doorWidth  / cfg.wallHeight,
+        headerH        / cfg.wallHeight
+    );
 
     // ---- Roof — visible when camera is below roof level ----
     if (camera.height < topZ + 20) {
