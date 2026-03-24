@@ -335,6 +335,11 @@ function _checkColliderWall(cfg, x, y) {
     if (x < cfg.x - hw - r || x > cfg.x + hw + r) return false;
     if (y < cfg.y - hd - r || y > cfg.y + hd + r) return false;
 
+    // If player's feet are above the wall top they can pass over freely
+    var feetZ = camera.height - playerHeightOffset;
+    var topZ  = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
+    if (feetZ >= topZ) return false;
+
     // Fully inside interior — no wall contact
     if (x > cfg.x - hw + r && x < cfg.x + hw - r &&
         y > cfg.y - hd + r && y < cfg.y + hd - r) return false;
@@ -342,7 +347,6 @@ function _checkColliderWall(cfg, x, y) {
     // South wall door gap (only if config defines a door)
     if (dw > 0 && y > cfg.y + hd - r) {
         var inDoorX  = Math.abs(x - cfg.x) < dw - r;
-        var feetZ    = camera.height - playerHeightOffset;
         var doorTopZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.doorHeight;
         if (inDoorX && feetZ < doorTopZ) return false;
     }
