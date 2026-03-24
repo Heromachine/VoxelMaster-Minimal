@@ -44,6 +44,7 @@ function initBuilding() {
     if (!buildingConfig || !buildingConfig.enabled) return;
     _loadBuildingTex('wall',    buildingConfig.wallTexture);
     _loadBuildingTex('ceiling', buildingConfig.ceilingTexture);
+    registerBuildingCollider(buildingConfig);
 }
 
 // ---- Texture sampling ----
@@ -290,50 +291,88 @@ function RenderBuilding() {
         headerH        / cfg.wallHeight
     );
 
-    // ---- Roof — visible when camera is below roof level ----
-    if (camera.height < topZ + 20) {
-        var rU = cfg.width / 64, rV2 = cfg.depth / 64;
-        _drawBuildingQuad(
-            {x: swX, y: swY, z: topZ},
-            {x: seX, y: seY, z: topZ},
-            {x: neX, y: neY, z: topZ},
-            {x: nwX, y: nwY, z: topZ},
-            0.85, cTex, rU, rV2
-        );
-    }
+    // ---- Roof (two-sided — near-plane clipper decides visibility) ----
+    var rU = cfg.width / 64, rV2 = cfg.depth / 64;
+    _drawBuildingQuad(
+        {x: swX, y: swY, z: topZ},
+        {x: seX, y: seY, z: topZ},
+        {x: neX, y: neY, z: topZ},
+        {x: nwX, y: nwY, z: topZ},
+        0.85, cTex, rU, rV2
+    );
 }
 
 // =====================================================
-// getBuildingCollision — called from camera.js
-// Returns true if position (x, y) collides with a wall.
-// Allows passage through the south door gap.
+// General-purpose building collision registry
+//
+// Any building config can be registered with
+// registerBuildingCollider(cfg).  initBuilding() does
+// this automatically for buildingConfig.  Future
+// buildings just call registerBuildingCollider() and
+// get wall + ceiling collision for free.
+//
+// camera.js calls:
+//   getBuildingCollision(x, y)  — wall/door check
+//   getBuildingCeiling(x, y)    — ceiling height check
+// Both are guarded with typeof so removing this module
+// causes no errors.
 // =====================================================
-function getBuildingCollision(x, y) {
-    if (!buildingConfig || !buildingConfig.enabled) return false;
 
-    var cfg = buildingConfig;
-    var hw  = cfg.width  / 2;
-    var hd  = cfg.depth  / 2;
-    var dw  = cfg.doorWidth / 2;
-    var r   = PLAYER_RADIUS;   // global from camera.js
+var buildingColliders = [];
 
-    // Broad reject: clearly outside building bounding box
+function registerBuildingCollider(cfg) {
+    buildingColliders.push(cfg);
+}
+
+// ---- Per-collider wall check ----
+function _checkColliderWall(cfg, x, y) {
+    var hw = cfg.width      / 2;
+    var hd = cfg.depth      / 2;
+    var dw = (cfg.doorWidth || 0) / 2;
+    var r  = PLAYER_RADIUS;
+
+    // Broad reject
     if (x < cfg.x - hw - r || x > cfg.x + hw + r) return false;
     if (y < cfg.y - hd - r || y > cfg.y + hd + r) return false;
 
-    // Fully inside interior: no wall contact
+    // Fully inside interior — no wall contact
     if (x > cfg.x - hw + r && x < cfg.x + hw - r &&
-        y > cfg.y - hd + r && y < cfg.y + hd - r) {
-        return false;
-    }
+        y > cfg.y - hd + r && y < cfg.y + hd - r) return false;
 
-    // South wall — check door gap
-    if (y > cfg.y + hd - r) {
+    // South wall door gap (only if config defines a door)
+    if (dw > 0 && y > cfg.y + hd - r) {
         var inDoorX  = Math.abs(x - cfg.x) < dw - r;
         var feetZ    = camera.height - playerHeightOffset;
         var doorTopZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.doorHeight;
-        if (inDoorX && feetZ < doorTopZ) return false;  // walk through
+        if (inDoorX && feetZ < doorTopZ) return false;
     }
 
-    return true;   // collision
+    return true;
+}
+
+// Called from camera.js canMoveTo — returns true = blocked
+function getBuildingCollision(x, y) {
+    for (var i = 0; i < buildingColliders.length; i++) {
+        if (_checkColliderWall(buildingColliders[i], x, y)) return true;
+    }
+    return false;
+}
+
+// Called from camera.js UpdateCamera — returns lowest ceiling height
+// above the player, or Infinity if not inside any building.
+function getBuildingCeiling(x, y) {
+    var lowest = Infinity;
+    for (var i = 0; i < buildingColliders.length; i++) {
+        var cfg = buildingColliders[i];
+        var hw  = cfg.width / 2;
+        var hd  = cfg.depth / 2;
+        if (x > cfg.x - hw && x < cfg.x + hw &&
+            y > cfg.y - hd && y < cfg.y + hd) {
+            var baseZ = (getRawTerrainHeight(cfg.x, cfg.y) || 72);
+            // Ceiling height is where the player's camera would hit the roof
+            var ceilH = baseZ + cfg.wallHeight - playerHeightOffset;
+            if (ceilH < lowest) lowest = ceilH;
+        }
+    }
+    return lowest;
 }

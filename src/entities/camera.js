@@ -197,6 +197,15 @@ function UpdateCamera() {
         camera.velocityY = 0;
     }
 
+    // Ceiling clamping (building interiors — optional module)
+    if (typeof getBuildingCeiling === 'function') {
+        var ceilH = getBuildingCeiling(camera.x, camera.y);
+        if (camera.height > ceilH) {
+            camera.height = ceilH;
+            if (camera.velocityY > 0) camera.velocityY = 0;
+        }
+    }
+
     // Crouch handling
     var isCrouching = input.crouch;
     if (isCrouching) {
