@@ -459,6 +459,11 @@ function getGroundHeight(x, y) {
         return Math.max(terrainHeight, cubeTopZ);
     }
 
+    // Building roof surfaces (optional module — guarded so it works without it)
+    if (typeof getBuildingRoofGround === 'function') {
+        terrainHeight = Math.max(terrainHeight, getBuildingRoofGround(x, y));
+    }
+
     return terrainHeight;
 }
 

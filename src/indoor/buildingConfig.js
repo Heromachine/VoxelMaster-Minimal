@@ -18,7 +18,7 @@ var buildingConfig = {
     // ---- Dimensions (world units) ----
     width:      280,    // East-West extent
     depth:      280,    // North-South extent
-    wallHeight: 130,    // Wall height above terrain base
+    wallHeight: 75,     // Wall height above terrain base (low enough to jump onto roof)
 
     // ---- Door opening (centered on south wall, facing spawn) ----
     doorWidth:  80,     // Width of door gap

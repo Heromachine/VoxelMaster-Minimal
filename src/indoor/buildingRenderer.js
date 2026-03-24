@@ -383,3 +383,26 @@ function getBuildingCeiling(x, y) {
     }
     return lowest;
 }
+
+// Called from voxelEngine.js getGroundHeight — returns roof surface
+// height when the player is standing on top of a building, so the
+// roof acts as solid ground just like the cube top surface does.
+function getBuildingRoofGround(x, y) {
+    var highest = 0;
+    for (var i = 0; i < buildingColliders.length; i++) {
+        var cfg  = buildingColliders[i];
+        var hw   = cfg.width  / 2;
+        var hd   = cfg.depth  / 2;
+        if (x > cfg.x - hw && x < cfg.x + hw &&
+            y > cfg.y - hd && y < cfg.y + hd) {
+            var topZ    = (getRawTerrainHeight(cfg.x, cfg.y) || 72) + cfg.wallHeight;
+            var roofGnd = topZ + playerHeightOffset;
+            // Only support the player on the roof if they are at or above it.
+            // If they are inside (below topZ) this returns 0 and has no effect.
+            if (camera.height >= topZ - 1 && roofGnd > highest) {
+                highest = roofGnd;
+            }
+        }
+    }
+    return highest;
+}
